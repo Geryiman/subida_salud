@@ -20,7 +20,7 @@ app.use(cors({
   }));
 // Rutas
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);AC
+app.use('/api/users', userRoutes);
 app.use('/api/treatments', treatmentRoutes);
 
 // Servidor en el puerto 5000
