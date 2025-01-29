@@ -17,7 +17,10 @@ const db = mysql.createConnection({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  ssl: { rejectUnauthorized: true }, // Habilita SSL
 });
+
 
 // Conexión a la base de datos
 db.connect((err) => {
@@ -132,6 +135,6 @@ app.delete("/api/administradores/:id", (req, res) => {
 
 // Arrancar el servidor
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+app.listen(DB_PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
