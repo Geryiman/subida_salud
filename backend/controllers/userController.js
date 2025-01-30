@@ -29,3 +29,13 @@ exports.uploadProfilePicture = async (req, res) => {
     res.status(500).json({ error: 'Error subiendo imagen' });
   }
 };
+
+exports.getUserProfile = (req, res) => {
+  const { nss } = req.user;
+
+  db.query('SELECT nombre, nss, edad, sexo FROM usuarios WHERE nss = ?', [nss], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error obteniendo datos del usuario' });
+    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(results[0]);
+  });
+};

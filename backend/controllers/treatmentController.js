@@ -1,3 +1,5 @@
+const db = require('../config/db');
+
 exports.getTreatments = (req, res) => {
   const { nss } = req.user;
 
@@ -34,4 +36,15 @@ exports.addTreatment = (req, res) => {
       );
     }
   );
+};
+
+exports.deleteTreatment = (req, res) => {
+  const { id } = req.params;
+  const { nss } = req.user;
+
+  db.query('DELETE FROM tratamientos WHERE id = ? AND nss = ?', [id, nss], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error eliminando tratamiento' });
+    if (results.affectedRows === 0) return res.status(404).json({ error: 'Tratamiento no encontrado' });
+    res.json({ message: 'Tratamiento eliminado exitosamente' });
+  });
 };
