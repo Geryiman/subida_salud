@@ -10,19 +10,22 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 
 const app = express();
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+// Configuración de CORS con variable de entorno
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 app.use(cors({
-    origin: 'https://saludfront6.vercel.app/', // Reemplaza con tu dominio de Vercel
+    origin: FRONTEND_URL, // Se obtiene de la variable de entorno
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true, // Habilita el uso de cookies o tokens en solicitudes cruzadas
-  }));
+    credentials: true, // Permite el uso de cookies o tokens en solicitudes cruzadas
+}));
+
+app.use(express.json());
+
 // Rutas
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/treatments', treatmentRoutes);
 
-// Servidor en el puerto 5000
+// Servidor en el puerto definido en variable de entorno o 5000 por defecto
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
