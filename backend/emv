@@ -1,6 +1,0 @@
-DB_HOST=db-mysql-app-salud-do-user-18905968-0.j.db.ondigitalocean.com
-DB_USER=doadmin
-DB_PASSWORD=AVNS_eC3dTdiST4fJ0_6la0r
-DB_NAME=salud_app
-DB_PORT=25060
-SPACES_ORIGIN=https://salud-magenes.sfo2.digitaloceanspaces.com
