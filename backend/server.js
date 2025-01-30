@@ -19,7 +19,7 @@ app.use(cors({
     credentials: true, // Habilita el uso de cookies o tokens en solicitudes cruzadas
   }));
 // Rutas
-app.get("/", (req, ress) => [
+app.get("/", (req, res) => [
     res.send("Hola Mundo")
 ])
 app.use('/api/auth', authRoutes); 
