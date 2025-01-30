@@ -23,7 +23,7 @@ app.use(cors({
 }));
 
 app.get("/", (req, res) => [
-    res.send("Hola Mundo")
+    res.send("Funciona la api")
 ])
 app.use('/api/auth', authRoutes); 
 app.use('/api/users', userRoutes);

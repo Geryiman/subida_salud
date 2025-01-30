@@ -37,3 +37,5 @@ exports.savePhoto = (req, res) => {
       }
     );
   };
+
+  console.log("control de alarmas")
