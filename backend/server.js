@@ -25,9 +25,9 @@ app.use(cors({
 app.get("/", (req, res) => [
     res.send("Funciona la api")
 ])
-app.use('/api/auth', authRoutes); 
-app.use('/api/users', userRoutes);
-app.use('/api/treatments', treatmentRoutes);
+app.use('/auth', authRoutes); 
+app.use('/users', userRoutes);
+app.use('/treatments', treatmentRoutes);
 
 
 // Servidor en el puerto definido en variable de entorno o 5000 por defecto
