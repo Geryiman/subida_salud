@@ -14,24 +14,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
+    origin: ' http://localhost:3000 '  ,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true, // Habilita el uso de cookies o tokens en solicitudes cruzadas
   }));
 
 // Rutas
 app.get("/", (req, res) => [
-    res.send("Funciona la api 9")
+    res.send("Funciona la api 10")
 ])
 app.use('/auth', authRoutes); 
 app.use('/users', userRoutes);
 app.use('/treatments', treatmentRoutes);
 
-app.use(cors({
-    origin: FRONTEND_URL, // Se obtiene de la variable de entorno
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true, // Permite el uso de cookies o tokens en solicitudes cruzadas
-}));
 
 // Servidor en el puerto definido en variable de entorno o 5000 por defecto
 const PORT = process.env.PORT || 5000;
