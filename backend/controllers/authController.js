@@ -2,29 +2,25 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-exports.registerUser = async (req, res) => {
+exports.registerUser = (req, res) => {
   const { nombre, nss, edad, sexo, password } = req.body;
 
-  try {
-    db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
-      if (results.length > 0) {
-        return res.status(400).json({ error: 'NSS ya registrado' });
+  db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
+    if (results.length > 0) {
+      return res.status(400).json({ error: 'NSS ya registrado' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    db.query(
+      'INSERT INTO usuarios (nombre, nss, edad, sexo, password) VALUES (?, ?, ?, ?, ?)',
+      [nombre, nss, edad, sexo, hashedPassword],
+      (err) => {
+        if (err) return res.status(500).json({ error: 'Error en el registro' });
+        res.status(201).json({ message: 'Usuario registrado exitosamente' });
       }
-
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      db.query(
-        'INSERT INTO usuarios (nombre, nss, edad, sexo, password) VALUES (?, ?, ?, ?, ?)',
-        [nombre, nss, edad, sexo, hashedPassword],
-        (err) => {
-          if (err) return res.status(500).json({ error: 'Error en el registro' });
-          res.status(201).json({ message: 'Usuario registrado exitosamente' });
-        }
-      );
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Error en el servidor' });
-  }
+    );
+  });
 };
 
 exports.loginUser = (req, res) => {
@@ -40,5 +36,6 @@ exports.loginUser = (req, res) => {
 
     const token = jwt.sign({ nss: user.nss }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.json({ token, user: { nombre: user.nombre, nss: user.nss, edad: user.edad, sexo: user.sexo } });
+    console.log(res, 'Usuari');
   });
 };

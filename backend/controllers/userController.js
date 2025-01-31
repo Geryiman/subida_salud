@@ -1,20 +1,11 @@
-const db = require('../config/db');
 const AWS = require('aws-sdk');
+const db = require('../config/db');
 
 const s3 = new AWS.S3({
   endpoint: process.env.SPACES_ENDPOINT,
   accessKeyId: process.env.SPACES_KEY,
   secretAccessKey: process.env.SPACES_SECRET,
 });
-
-exports.getUserProfile = (req, res) => {
-  const { nss } = req.user;
-
-  db.query('SELECT nombre, nss, edad, sexo, fotoPerfil FROM usuarios WHERE nss = ?', [nss], (err, results) => {
-    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(results[0]);
-  });
-};
 
 exports.uploadProfilePicture = async (req, res) => {
   const { nss } = req.user;
@@ -37,4 +28,14 @@ exports.uploadProfilePicture = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Error subiendo imagen' });
   }
+};
+
+exports.getUserProfile = (req, res) => {
+  const { nss } = req.user;
+
+  db.query('SELECT nombre, nss, edad, sexo FROM usuarios WHERE nss = ?', [nss], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error obteniendo datos del usuario' });
+    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(results[0]);
+  });
 };
