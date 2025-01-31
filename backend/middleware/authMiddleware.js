@@ -1,9 +1,15 @@
 const jwt = require('jsonwebtoken');
 
 const authenticateToken = (req, res, next) => {
-  const token = req.header('Authorization');
-  if (!token) {
+  const authHeader = req.header('Authorization');
+  if (!authHeader) {
     return res.status(401).json({ error: 'Acceso denegado. No se proporcionó un token.' });
+  }
+
+  const token = authHeader.split(' ')[1]; // Eliminar el prefijo 'Bearer '
+
+  if (!token) {
+    return res.status(401).json({ error: 'Acceso denegado. Token no proporcionado.' });
   }
 
   try {
