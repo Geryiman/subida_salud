@@ -2,17 +2,18 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-exports.registerUser = (req, res) => {
+
+exports.registerUser = async (req, res) => {
   const { nombre, nss, edad, sexo, password } = req.body;
 
-  db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
+  (await db()).query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
     if (results.length > 0) {
       return res.status(400).json({ error: 'NSS ya registrado' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    db.query(
+    (await db()).query(
       'INSERT INTO usuarios (nombre, nss, edad, sexo, password) VALUES (?, ?, ?, ?, ?)',
       [nombre, nss, edad, sexo, hashedPassword],
       (err) => {
@@ -23,13 +24,14 @@ exports.registerUser = (req, res) => {
   });
 };
 
-exports.loginUser = (req, res) => {
+exports.loginUser = async (req, res) => {
   const { nss, password } = req.body;
 
-  db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
+  (await db()).query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
     if (results.length === 0) return res.status(400).json({ error: 'Usuario no encontrado' });
 
     const user = results[0];
+    console.log(password );
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) return res.status(400).json({ error: 'Contraseña incorrecta' });

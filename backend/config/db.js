@@ -28,11 +28,10 @@ async function downloadCertificate() {
     console.error('Error al descargar el certificado:', error);
     process.exit(1); // Detiene la ejecución si no se puede descargar el certificado
   }
-
 }
 
 // Función para conectar a la base de datos
-async function connectDB() {
+async function db() {
   // Descargar el certificado antes de intentar la conexión
   await downloadCertificate();
 
@@ -61,5 +60,6 @@ async function connectDB() {
 
   return db;
 }
+
 // Exportar la conexión
-module.exports = connectDB();
+module.exports = db;
