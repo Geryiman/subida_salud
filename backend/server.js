@@ -10,7 +10,6 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 
 const app = express();
 
-<<<<<<< HEAD
 // Middlewares
 app.use(cors());
 app.use(express.json());
@@ -23,10 +22,6 @@ app.use(cors({
 app.use('/api/auth', authRoutes); 
 app.use('/api/users', userRoutes);
 app.use('/api/treatments', treatmentRoutes);
-=======
-// Configuración de CORS con variable de entorno
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
->>>>>>> 256fc011d8f4baba92617590311d6c660100ce85
 
 app.use(cors({
     origin: FRONTEND_URL, // Se obtiene de la variable de entorno
