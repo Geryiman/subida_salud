@@ -36,5 +36,6 @@ exports.loginUser = (req, res) => {
 
     const token = jwt.sign({ nss: user.nss }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.json({ token, user: { nombre: user.nombre, nss: user.nss, edad: user.edad, sexo: user.sexo } });
+    console.log(res, 'Usuari');
   });
 };
