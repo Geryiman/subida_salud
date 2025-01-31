@@ -20,7 +20,7 @@ app.use(cors({
 }));
 
 app.get("/", (req, res) => [
-    res.send("Funciona la api")
+    res.send("Funciona la api control 2:45")
 ])
 app.use('/auth', authRoutes); 
 app.use('/users', userRoutes);
