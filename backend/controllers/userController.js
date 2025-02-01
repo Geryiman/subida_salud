@@ -32,7 +32,6 @@ exports.uploadProfilePicture = async (req, res) => {
 };
 exports.getUserProfile = async (req, res) => {
   const { nss } = req.query;
-
   if (!nss) {
     return res.status(400).json({ error: 'NSS es requerido' });
   }
@@ -41,12 +40,13 @@ exports.getUserProfile = async (req, res) => {
     const connection = await db(); // Obtener conexión
     const [results] = await connection.query('SELECT nombre, nss, edad, sexo, fotoPerfil FROM usuarios WHERE nss = ?', [nss]);
 
+    connection.release(); // Liberar conexión
+
     if (results.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
     res.json(results[0]);
-    connection.release(); // Liberar conexión
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener los datos del perfil' });
