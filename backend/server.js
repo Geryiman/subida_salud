@@ -11,6 +11,19 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 const app = express();
 
 // Middlewares
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+      return res.sendStatus(200); // Responde a las solicitudes preflight (CORS)
+  }
+
+  next();
+});
+
 app.use(cors({
     origin: 'http://localhost:3000', // Sin espacios extra
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
