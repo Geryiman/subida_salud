@@ -21,7 +21,7 @@ app.use(cors({
 
 // Rutas
 app.get("/", (req, res) => [
-    res.send("Funciona la api 12")
+    res.send("Funciona la api 12x")
 ])
 app.use('/auth', authRoutes); 
 app.use('/users', userRoutes);
