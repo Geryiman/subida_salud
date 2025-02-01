@@ -30,29 +30,25 @@ exports.uploadProfilePicture = async (req, res) => {
     res.status(500).json({ error: 'Error subiendo imagen' });
   }
 };
+exports.getUserProfile = async (req, res) => {
+  const { nss } = req.query;
 
-exports.registerUser = async (req, res) => {
-  const { nombre, nss, edad, sexo, password } = req.body;
+  if (!nss) {
+    return res.status(400).json({ error: 'NSS es requerido' });
+  }
 
   try {
     const connection = await db(); // Obtener conexión
-    const [results] = await connection.query('SELECT * FROM usuarios WHERE nss = ?', [nss]);
+    const [results] = await connection.query('SELECT nombre, nss, edad, sexo, fotoPerfil FROM usuarios WHERE nss = ?', [nss]);
 
-    if (results.length > 0) {
-      return res.status(400).json({ error: 'NSS ya registrado' });
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    await connection.query(
-      'INSERT INTO usuarios (nombre, nss, edad, sexo, password) VALUES (?, ?, ?, ?, ?)',
-      [nombre, nss, edad, sexo, hashedPassword]
-    );
-
-    res.status(201).json({ message: 'Usuario registrado exitosamente' });
+    res.json(results[0]);
     connection.release(); // Liberar conexión
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error en el registro' });
+    res.status(500).json({ error: 'Error al obtener los datos del perfil' });
   }
 };
