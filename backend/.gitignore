@@ -19,7 +19,8 @@ build/
 
 # Environment variables
 .env
-ca
+ca-certificate.crt
+db.txt
 
 # IDEs and editors
 .vscode/
