@@ -30,6 +30,11 @@ exports.uploadProfilePicture = async (req, res) => {
     res.status(500).json({ error: 'Error subiendo imagen' });
   }
 };
+
+
+
+
+
 const db = require('../config/db');
 
 exports.getUserProfile = async (req, res) => {
@@ -55,6 +60,6 @@ exports.getUserProfile = async (req, res) => {
     res.json(results[0]); // 📌 Enviar los datos del usuario al frontend
   } catch (err) {
     console.error('Error al obtener los datos del perfil:', err);
-    res.status(500).json({ error: 'Error al obtener los datos del perfil' });
+    res.status(500).json({ error: 'Error al obtener los datos del perfil con eroor en 500' });
   }
 };
