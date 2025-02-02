@@ -40,7 +40,7 @@ async function iniciarServidor() {
         port: 25060,
         ssl: { ca: fs.readFileSync(certPath) },
         waitForConnections: true,
-        connectionLimit: 10,
+        connectionLimit: 500,
         queueLimit: 0
     });
 
