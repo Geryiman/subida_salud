@@ -51,8 +51,8 @@ async function iniciarServidor() {
         endpoint: "https://sfo2.digitaloceanspaces.com",
         region: "sfo2",
         credentials: {
-            accessKeyId: "DO801LTEURCEU7UEUYVJ",
-            secretAccessKey: "TU_SECRET_ACCESS_KEY"
+            accessKeyId: "DO00F92NFGUU9UR29VYV", // 🔥 Credenciales visibles (NO recomendado en producción)
+            secretAccessKey: "pr0SzcMGY9zK/TaqelriS6oZJU+D/3K5CHsM7qDyYZU"
         }
     });
 
