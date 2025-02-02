@@ -5,7 +5,6 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const fs = require("fs");
 const axios = require("axios");
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const {S3Client, PutObjectCommand, DeleteObjectCommand} = require("@aws-sdk/client-s3");
 
 const app = express();
