@@ -82,95 +82,71 @@ async function iniciarServidor() {
         res.status(200).json({ status: "ok", message: "Health check passed!" });
     });
 
-    app.post("/usuarios", (req, res) => {
-        const { nss, nombre, edad, sexo, contraseña } = req.body;
-        db.query("INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)",
-            [nss, nombre, edad, sexo, contraseña],
-            (err, result) => {
-                if (err) res.status(500).json({ error: err });
-                else res.json({ message: "Usuario registrado" });
-            }
-        );
-    });
-
     app.post("/login", (req, res) => {
         const { nss, contraseña } = req.body;
-        db.query("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña],
-            (err, result) => {
-                if (err) res.status(500).json({ error: err });
-                else if (result.length === 0) res.status(401).json({ error: "Credenciales inválidas" });
-                else res.json({
-                    message: "Inicio de sesión exitoso",
-                    usuario: result[0]
-                });
+        console.log(`[LOGIN] Intento de inicio de sesión para NSS: ${nss}`);
+
+        // Validar que se proporcionen NSS y contraseña
+        if (!nss || !contraseña) {
+            console.error("[LOGIN] NSS o contraseña no proporcionados.");
+            return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
+        }
+
+        db.query("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña], (err, result) => {
+            if (err) {
+                console.error(`[LOGIN] Error de MySQL: ${err}`);
+                return res.status(500).json({ error: "Error interno del servidor." });
             }
-        );
-    });
 
-    app.get("/perfil/:nss", (req, res) => {
-        const { nss } = req.params;
+            if (result.length === 0) {
+                console.log(`[LOGIN] Credenciales inválidas para NSS: ${nss}`);
+                return res.status(401).json({ error: "Credenciales inválidas." });
+            }
 
-        const queryUsuario = "SELECT * FROM usuarios WHERE nss = ?";
-        db.query(queryUsuario, [nss], (err, usuarioResult) => {
-            if (err) return res.status(500).json({ error: err });
-            if (usuarioResult.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
-
-            let usuario = usuarioResult[0];
-
-            const queryTratamientos = "SELECT * FROM tratamientos WHERE usuario_nss = ?";
-            db.query(queryTratamientos, [nss], (err, tratamientosResult) => {
-                if (err) return res.status(500).json({ error: err });
-                usuario.tratamientos = tratamientosResult;
-
-                const tratamientoIds = tratamientosResult.map(t => t.id);
-                if (tratamientoIds.length > 0) {
-                    const queryMedicamentos = "SELECT * FROM medicamentos WHERE tratamiento_id IN (?)";
-                    db.query(queryMedicamentos, [tratamientoIds], (err, medicamentosResult) => {
-                        if (err) return res.status(500).json({ error: err });
-                        usuario.medicamentos = medicamentosResult;
-
-                        const queryAlarmas = "SELECT * FROM alarmas WHERE usuario_nss = ?";
-                        db.query(queryAlarmas, [nss], (err, alarmasResult) => {
-                            if (err) return res.status(500).json({ error: err });
-                            usuario.alarmas = alarmasResult;
-
-                            const queryImagenes = "SELECT * FROM imagenes WHERE usuario_nss = ?";
-                            db.query(queryImagenes, [nss], (err, imagenesResult) => {
-                                if (err) return res.status(500).json({ error: err });
-                                usuario.imagenes = imagenesResult;
-
-                                res.json(usuario);
-                            });
-                        });
-                    });
-                } else {
-                    usuario.medicamentos = [];
-                    usuario.alarmas = [];
-                    usuario.imagenes = [];
-                    res.json(usuario);
-                }
+            console.log(`[LOGIN] Inicio de sesión exitoso para NSS: ${nss}`);
+            res.json({
+                message: "Inicio de sesión exitoso",
+                usuario: result[0]
             });
         });
     });
 
     app.post("/imagenes", upload.single("imagen"), (req, res) => {
+        console.log("[IMAGENES] Solicitud para subir imagen recibida.");
         const { usuario_nss, tipo, descripcion } = req.body;
+        console.log(`[IMAGENES] Datos recibidos: usuario_nss=${usuario_nss}, tipo=${tipo}, descripcion=${descripcion}`);
+
+        if (!req.file) {
+            console.error("[IMAGENES] No se recibió un archivo.");
+            return res.status(400).json({ error: "No se recibió un archivo." });
+        }
+
         const url = req.file.location;
 
         db.query("INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)",
             [usuario_nss, tipo, url, descripcion],
             (err, result) => {
-                if (err) res.status(500).json({ error: err });
-                else res.json({ message: "Imagen subida", url });
+                if (err) {
+                    console.error(`[IMAGENES] Error de MySQL: ${err}`);
+                    return res.status(500).json({ error: "Error interno del servidor." });
+                }
+                console.log(`[IMAGENES] Imagen subida con éxito: ${url}`);
+                res.json({ message: "Imagen subida", url });
             }
         );
     });
 
     app.get("/imagenes/:nss", (req, res) => {
         const { nss } = req.params;
+        console.log(`[IMAGENES] Solicitud para obtener imágenes de NSS: ${nss}`);
+
         db.query("SELECT * FROM imagenes WHERE usuario_nss = ?", [nss], (err, result) => {
-            if (err) res.status(500).json({ error: err });
-            else res.json(result);
+            if (err) {
+                console.error(`[IMAGENES] Error de MySQL: ${err}`);
+                return res.status(500).json({ error: "Error interno del servidor." });
+            }
+            console.log(`[IMAGENES] Imágenes encontradas para NSS: ${nss}`);
+            res.json(result);
         });
     });
 
