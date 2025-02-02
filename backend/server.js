@@ -77,8 +77,8 @@ async function iniciarServidor() {
                 return res.status(400).json({ error: "Todos los campos son obligatorios." });
             }
             
-            if (!["Maculino", "Femenino"].includes(sexo.toUpperCase())) {
-                return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Maculino' o 'Femenino'." });
+            if (!["M", "F"].includes(sexo.toUpperCase())) {
+                return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'M' o 'F'." });
             }
             
             db.query("INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)",
