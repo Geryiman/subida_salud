@@ -68,12 +68,12 @@ async function iniciarServidor() {
     // 📌 Endpoint: Registrar usuario con corrección de Promises
     app.post('/usuarios', async (req, res) => {
         const { nss, nombre, edad, sexo, contraseña } = req.body;
-    
+
         // Verificar que todos los campos estén presentes
         if (!nss || !nombre || !edad || !sexo || !contraseña) {
             return res.status(400).json({ error: "Todos los campos son obligatorios." });
         }
-    
+
         // Convertir "M" a "Masculino" y "F" a "Femenino"
         let sexoConvertido = sexo;
         if (sexo.toUpperCase() === "M") {
@@ -81,18 +81,18 @@ async function iniciarServidor() {
         } else if (sexo.toUpperCase() === "F") {
             sexoConvertido = "Femenino";
         }
-    
+
         // Validar que el sexo sea "Masculino", "Femenino" o "Otro"
         const valoresPermitidos = ["Masculino", "Femenino", "Otro"];
         if (!valoresPermitidos.includes(sexoConvertido)) {
             return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Masculino', 'Femenino' o 'Otro'." });
         }
-    
+
         try {
             // Insertar usuario en la base de datos con await
             const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
             const values = [nss, nombre, edad, sexoConvertido, contraseña];
-    
+
             await db.execute(query, values);
             return res.status(201).json({ message: "Usuario registrado correctamente." });
 
@@ -122,43 +122,40 @@ async function iniciarServidor() {
         }
     });
 
-// 📌 Endpoint: Subir imagen a DigitalOcean Spaces y guardar en MySQL
-app.post("/imagenes", upload.single("imagen"), async (req, res) => {
-    try {
-        // 📌 Verificar si el archivo fue subido
-        if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
+    // 📌 Endpoint: Subir imagen a DigitalOcean Spaces y guardar en MySQL
+    app.post("/imagenes", upload.single("imagen"), async (req, res) => {
+        try {
+            if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
-        const { usuario_nss, tipo, descripcion } = req.body;
+            const { usuario_nss, tipo, descripcion } = req.body;
 
-        // 📌 Validar que usuario_nss esté presente
-        if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
 
-        // 📌 Validar que el tipo sea "perfil" o "medicamento"
-        if (!["perfil", "medicamento"].includes(tipo)) {
-            return res.status(400).json({ error: "El tipo debe ser 'perfil' o 'medicamento'." });
+            const key = `imagenes/${Date.now()}-${req.file.originalname}`;
+
+            const uploadParams = {
+                Bucket: "salud-magenes", // Nombre del bucket
+                Key: key,
+                Body: req.file.buffer, // Se usa buffer en lugar de stream
+                ACL: "public-read",
+                ContentType: req.file.mimetype
+            };
+
+            const command = new PutObjectCommand(uploadParams);
+            await s3Client.send(command);
+
+            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+            res.status(201).json({
+                message: "Imagen subida con éxito.",
+                url: imageUrl
+            });
+
+        } catch (error) {
+            console.error("❌ Error al subir la imagen:", error);
+            res.status(500).json({ error: "Error en el servidor al subir la imagen." });
         }
-
-        // 📌 Obtener la URL pública de la imagen
-        const imageUrl = req.file.location;
-
-        // 📌 Guardar en la base de datos MySQL
-        const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)";
-        const values = [usuario_nss, tipo, imageUrl, descripcion];
-
-        await db.execute(query, values);
-
-        // 📌 Responder con éxito enviando la URL de la imagen
-        res.status(201).json({
-            message: "Imagen subida con éxito.",
-            url: imageUrl
-        });
-
-    } catch (error) {
-        console.error("❌ Error al subir la imagen:", error);
-        res.status(500).json({ error: "Error en el servidor al subir la imagen." });
-    }
-});
-
+    });
 
 
     // 📌 Endpoint: Obtener imágenes por usuario
