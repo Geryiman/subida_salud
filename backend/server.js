@@ -1,5 +1,5 @@
 const express = require("express");
-const mysql = require("mysql2/promise"); // Importamos MySQL con Promesas
+const mysql = require("mysql2/promise");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const multer = require("multer");
@@ -51,8 +51,8 @@ async function iniciarServidor() {
         endpoint: "https://sfo2.digitaloceanspaces.com",
         region: "sfo2",
         credentials: {
-            accessKeyId: "DO00F92NFGUU9UR29VYV", // 🔥 Credenciales visibles (NO recomendado en producción)
-            secretAccessKey: "pr0SzcMGY9zK/TaqelriS6oZJU+D/3K5CHsM7qDyYZU"
+            accessKeyId: "DO801LTEURCEU7UEUYVJ",
+            secretAccessKey: "TU_SECRET_ACCESS_KEY"
         }
     });
 
@@ -60,17 +60,56 @@ async function iniciarServidor() {
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
-    // 📌 Endpoint para subir imágenes a DigitalOcean Spaces y guardarlas en MySQL
-    app.post("/imagenes", upload.single("imagen"), async (req, res) => {
+    // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
+    app.post("/perfil", upload.single("imagen"), async (req, res) => {
         try {
-            console.log("📤 Recibiendo archivo...");
-
             if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
-            const { usuario_nss, tipo, descripcion } = req.body;
-            console.log("📌 Datos recibidos:", usuario_nss, tipo, descripcion);
+            const { usuario_nss } = req.body;
+            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
 
-            if (!usuario_nss || !tipo || !descripcion) {
+            // 🔹 Generar un nombre único para la imagen de perfil
+            const key = `imagenes/perfil_${usuario_nss}.jpg`;
+
+            const uploadParams = {
+                Bucket: "salud-magenes",
+                Key: key,
+                Body: req.file.buffer,
+                ACL: "public-read",
+                ContentType: req.file.mimetype
+            };
+
+            const command = new PutObjectCommand(uploadParams);
+            await s3Client.send(command);
+
+            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+            // 🔹 Guardar o actualizar la foto de perfil en MySQL
+            const query = `
+                INSERT INTO imagenes (usuario_nss, tipo, url, descripcion)
+                VALUES (?, 'perfil', ?, 'Foto de perfil')
+                ON DUPLICATE KEY UPDATE url = VALUES(url), descripcion = 'Foto de perfil'
+            `;
+            await db.execute(query, [usuario_nss, imageUrl]);
+
+            res.status(201).json({
+                message: "Foto de perfil actualizada con éxito.",
+                url: imageUrl
+            });
+
+        } catch (error) {
+            console.error("❌ Error al subir la foto de perfil:", error);
+            res.status(500).json({ error: "Error en el servidor al subir la imagen." });
+        }
+    });
+
+    // 📌 Endpoint para subir imágenes de medicamentos
+    app.post("/medicamentos", upload.single("imagen"), async (req, res) => {
+        try {
+            if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
+
+            const { usuario_nss, descripcion } = req.body;
+            if (!usuario_nss || !descripcion) {
                 return res.status(400).json({ error: "Todos los campos son obligatorios." });
             }
 
@@ -91,12 +130,11 @@ async function iniciarServidor() {
             const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
             // 🔹 Guardar en MySQL
-            const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)";
-            await db.execute(query, [usuario_nss, tipo, imageUrl, descripcion]);
+            const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'medicamento', ?, ?)";
+            await db.execute(query, [usuario_nss, imageUrl, descripcion]);
 
-            console.log("✅ Imagen subida con éxito:", imageUrl);
             res.status(201).json({
-                message: "Imagen subida y guardada en la base de datos con éxito.",
+                message: "Imagen de medicamento guardada con éxito.",
                 url: imageUrl
             });
 
@@ -106,70 +144,39 @@ async function iniciarServidor() {
         }
     });
 
-    // 📌 Endpoint para obtener la última imagen subida por usuario
-    app.get("/imagenes/:nss", async (req, res) => {
+    // 📌 Endpoint para obtener la foto de perfil del usuario
+    app.get("/perfil/:nss", async (req, res) => {
         try {
             const { nss } = req.params;
-            const [result] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? ORDER BY id DESC LIMIT 1", [nss]);
+            const [result] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [nss]);
 
             if (result.length === 0) {
-                return res.status(404).json({ error: "No se encontraron imágenes para este usuario." });
+                return res.status(404).json({ error: "No se encontró foto de perfil para este usuario." });
             }
 
             res.json({ url: result[0].url });
 
         } catch (error) {
-            console.error("❌ Error al obtener la imagen:", error);
+            console.error("❌ Error al obtener la foto de perfil:", error);
             res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
         }
     });
 
-    // 📌 Endpoint: Registrar usuario
-    app.post('/usuarios', async (req, res) => {
-        const { nss, nombre, edad, sexo, contraseña } = req.body;
-
-        if (!nss || !nombre || !edad || !sexo || !contraseña) {
-            return res.status(400).json({ error: "Todos los campos son obligatorios." });
-        }
-
-        let sexoConvertido = sexo;
-        if (sexo.toUpperCase() === "M") sexoConvertido = "Masculino";
-        else if (sexo.toUpperCase() === "F") sexoConvertido = "Femenino";
-
-        const valoresPermitidos = ["Masculino", "Femenino", "Otro"];
-        if (!valoresPermitidos.includes(sexoConvertido)) {
-            return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Masculino', 'Femenino' o 'Otro'." });
-        }
-
+    // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
+    app.get("/medicamentos/:nss", async (req, res) => {
         try {
-            const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
-            await db.execute(query, [nss, nombre, edad, sexoConvertido, contraseña]);
-
-            res.status(201).json({ message: "Usuario registrado correctamente." });
-
-        } catch (error) {
-            console.error("Error en el registro:", error);
-            res.status(500).json({ error: "Error en el servidor al registrar el usuario." });
-        }
-    });
-
-    // 📌 Endpoint: Inicio de sesión
-    app.post("/login", async (req, res) => {
-        try {
-            const { nss, contraseña } = req.body;
-            if (!nss || !contraseña) {
-                return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
-            }
-
-            const [result] = await db.execute("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña]);
+            const { nss } = req.params;
+            const [result] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'medicamento'", [nss]);
 
             if (result.length === 0) {
-                return res.status(401).json({ error: "Credenciales inválidas." });
+                return res.status(404).json({ error: "No se encontraron imágenes de medicamentos para este usuario." });
             }
 
-            res.json({ message: "Inicio de sesión exitoso", usuario: result[0] });
+            res.json({ imagenes: result.map(row => row.url) });
+
         } catch (error) {
-            res.status(500).json({ error: "Error inesperado." });
+            console.error("❌ Error al obtener imágenes de medicamentos:", error);
+            res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
         }
     });
 
