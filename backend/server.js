@@ -122,21 +122,32 @@ async function iniciarServidor() {
         }
     });
 
-    // 📌 Endpoint: Subida de imágenes
-    app.post("/imagenes", upload.single("imagen"), async (req, res) => {
-        try {
-            if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
-            const { usuario_nss, tipo, descripcion } = req.body;
-            const url = req.file.location;
+ // 📌 Endpoint: Subida de imágenes a DigitalOcean Spaces
+app.post("/imagenes", upload.single("imagen"), async (req, res) => {
+    try {
+        // Verificar que se haya subido un archivo
+        if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
-            await db.execute("INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)", 
-                [usuario_nss, tipo, url, descripcion]);
+        const { usuario_nss, tipo, descripcion } = req.body;
 
-            res.json({ message: "Imagen subida con éxito.", url });
-        } catch (error) {
-            res.status(500).json({ error: "Error inesperado." });
-        }
-    });
+        // 📌 Obtener la URL pública de la imagen en DigitalOcean Spaces
+        const url = req.file.location; // `req.file.location` ya es la URL pública en Spaces
+
+        // 📌 Guardar en la base de datos MySQL
+        const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)";
+        const values = [usuario_nss, tipo, url, descripcion];
+
+        await db.execute(query, values);
+
+        // 📌 Responder con éxito
+        res.status(201).json({ message: "Imagen subida con éxito.", url });
+
+    } catch (error) {
+        console.error("❌ Error al subir la imagen:", error);
+        res.status(500).json({ error: "Error en el servidor al subir la imagen." });
+    }
+});
+
 
     // 📌 Endpoint: Obtener imágenes por usuario
     app.get("/imagenes/:nss", async (req, res) => {
