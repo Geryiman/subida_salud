@@ -133,7 +133,7 @@ async function iniciarServidor() {
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
-  // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
+ // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
 app.post("/perfil", upload.single("imagen"), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
@@ -141,15 +141,18 @@ app.post("/perfil", upload.single("imagen"), async (req, res) => {
         const { usuario_nss } = req.body;
         if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
 
-        // 🔹 Buscar la imagen de perfil actual en la base de datos
+        // 🔹 Definir la ruta de la imagen en DigitalOcean Spaces
+        const key = `usuario/${usuario_nss}/perfil.jpg`;
+
+        // 🔹 Buscar la imagen existente en la base de datos
         const [existingImage] = await db.execute(
             "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
             [usuario_nss]
         );
 
         if (existingImage.length > 0) {
-            const imageUrl = existingImage[0].url;
-            const keyToDelete = imageUrl.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1];
+            const oldImageUrl = existingImage[0].url;
+            const keyToDelete = oldImageUrl.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1];
 
             // 🔹 Eliminar la imagen anterior de DigitalOcean Spaces
             const deleteParams = {
@@ -170,7 +173,6 @@ app.post("/perfil", upload.single("imagen"), async (req, res) => {
         }
 
         // 🔹 Subir la nueva imagen a DigitalOcean Spaces
-        const key = `imagenes/perfil_${usuario_nss}.jpg`;
         const uploadParams = {
             Bucket: "salud-magenes",
             Key: key,
@@ -200,6 +202,7 @@ app.post("/perfil", upload.single("imagen"), async (req, res) => {
         res.status(500).json({ error: "Error en el servidor al subir la imagen." });
     }
 });
+
 
 
     // 📌 Endpoint para subir imágenes de medicamentos
@@ -242,29 +245,6 @@ app.post("/perfil", upload.single("imagen"), async (req, res) => {
             res.status(500).json({ error: "Error en el servidor al subir la imagen." });
         }
     });
-
-// 📌 Endpoint para obtener la última foto de perfil del usuario
-app.get("/perfil/:nss", async (req, res) => {
-    try {
-        const { nss } = req.params;
-        const [result] = await db.execute(
-            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-            [nss]
-        );
-
-        if (result.length === 0) {
-            return res.status(404).json({ error: "No se encontró foto de perfil para este usuario." });
-        }
-
-        res.json({ url: result[0].url });
-
-    } catch (error) {
-        console.error("❌ Error al obtener la última foto de perfil:", error);
-        res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
-    }
-});
-
-
     // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
     app.get("/medicamentos/:nss", async (req, res) => {
         try {
@@ -283,20 +263,31 @@ app.get("/perfil/:nss", async (req, res) => {
         }
     });
 
-    // 📌 Endpoint para obtener la información completa del usuario
+  // 📌 Endpoint para obtener la información completa del usuario
 app.get("/usuario/:nss", async (req, res) => {
     try {
         const { nss } = req.params;
 
         // 🔹 Obtener datos del usuario
-        const [userResult] = await db.execute("SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?", [nss]);
+        const [userResult] = await db.execute(
+            "SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?",
+            [nss]
+        );
+
         if (userResult.length === 0) {
             return res.status(404).json({ error: "Usuario no encontrado." });
         }
 
-        // 🔹 Obtener foto de perfil
-        const [imageResult] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [nss]);
-        const userImage = imageResult.length > 0 ? imageResult[0].url : null;
+        // 🔹 Obtener la última foto de perfil
+        const [imageResult] = await db.execute(
+            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+            [nss]
+        );
+
+        // 🔹 Definir la URL de la imagen
+        const userImage = imageResult.length > 0
+            ? imageResult[0].url
+            : `https://salud-magenes.sfo2.digitaloceanspaces.com/usuario/${nss}/perfil.jpg`;
 
         res.json({
             nss,
