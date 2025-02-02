@@ -44,32 +44,32 @@ exports.loginUser = async (req, res) => {
   const { nss, password } = req.body;
 
   try {
-    const db = await getDB(); // 📌 Esperamos la conexión a MySQL
+      const db = await getDB(); // 📌 Ahora `db` está disponible antes de usarlo
 
-    db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
-      if (err) {
-        console.error('❌ Error en la base de datos:', err);
-        return res.status(500).json({ error: 'Error en la base de datos' });
-      }
+      db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
+          if (err) {
+              console.error('❌ Error en la base de datos:', err);
+              return res.status(500).json({ error: 'Error en la base de datos' });
+          }
 
-      if (results.length === 0) {
-        return res.status(400).json({ error: 'Usuario no encontrado' });
-      }
+          if (results.length === 0) {
+              return res.status(400).json({ error: 'Usuario no encontrado' });
+          }
 
-      const user = results[0];
+          const user = results[0];
 
-      console.log('Contraseña ingresada:', password);
-      console.log('Contraseña en BD (hash):', user.password);
+          console.log('Contraseña ingresada:', password);
+          console.log('Contraseña en BD (hash):', user.password);
 
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        return res.status(400).json({ error: 'Contraseña incorrecta' });
-      }
+          const isMatch = await bcrypt.compare(password, user.password);
+          if (!isMatch) {
+              return res.status(400).json({ error: 'Contraseña incorrecta' });
+          }
 
-      res.json({ message: 'Inicio de sesión exitoso', nss: user.nss });
-    });
+          res.json({ message: 'Inicio de sesión exitoso', nss: user.nss });
+      });
   } catch (error) {
-    console.error('❌ Error en el login:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+      console.error('❌ Error en el login:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
   }
 };

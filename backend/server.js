@@ -12,19 +12,6 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 
 const app = express();
 
-// 📌 Middleware para permitir CORS correctamente
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || '*');
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
-
-  if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
-  }
-  next();
-});
-
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -69,7 +56,7 @@ async function downloadCertificate() {
   }
 }
 
-// 📌 Crear una instancia global de MySQL
+// 📌 Variable Global para la Base de Datos
 let db;
 
 // 📌 Función para conectar a MySQL
@@ -119,8 +106,8 @@ connectDB().then((database) => {
   console.error('❌ Error al conectar a la base de datos:', err);
 });
 
-// 📌 Exportar `connectDB()`, NO `db` directamente
-module.exports = async () => {
+// 📌 Exportar la función para obtener `db`
+module.exports = async function getDB() {
   if (!db) {
     db = await connectDB();
   }
