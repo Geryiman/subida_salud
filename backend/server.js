@@ -1,5 +1,5 @@
 const express = require("express");
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise"); // Importamos la versión basada en promesas
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const multer = require("multer");
@@ -16,7 +16,7 @@ app.use(bodyParser.json());
 
 const certPath = "./ca-certificate.crt";
 
-// 📌 Función para descargar el certificado SSL automáticamente
+// 📌 Descargar certificado SSL automáticamente
 async function descargarCertificado() {
     try {
         const url = "https://salud-magenes.sfo2.digitaloceanspaces.com/ca-certificate.crt";
@@ -32,23 +32,20 @@ async function descargarCertificado() {
 async function iniciarServidor() {
     await descargarCertificado();
 
-    // 📌 Configuración de MySQL con SSL
-    const db = mysql.createConnection({
+    // 📌 Configuración de MySQL con SSL usando Promises
+    const db = await mysql.createPool({
         host: "db-mysql-app-salud-do-user-18905968-0.j.db.ondigitalocean.com",
         user: "doadmin",
         password: "AVNS_eC3dTdiST4fJ0_6la0r",
         database: "salud_app_db",
         port: 25060,
-        ssl: { ca: fs.readFileSync(certPath) }
+        ssl: { ca: fs.readFileSync(certPath) },
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
     });
 
-    db.connect(err => {
-        if (err) {
-            console.error("❌ Error conectando a MySQL:", err.message);
-            process.exit(1);
-        }
-        console.log("✅ Conectado a MySQL con SSL");
-    });
+    console.log("✅ Conectado a MySQL con SSL");
 
     // 📌 Configuración de DigitalOcean Spaces
     const s3 = new aws.S3({
@@ -68,8 +65,7 @@ async function iniciarServidor() {
         })
     });
 
-    // 📌 Rutas con mejor control de errores
-
+    // 📌 Endpoint: Registrar usuario con corrección de Promises
     app.post('/usuarios', async (req, res) => {
         const { nss, nombre, edad, sexo, contraseña } = req.body;
     
@@ -93,61 +89,61 @@ async function iniciarServidor() {
         }
     
         try {
-            // Insertar el usuario en la base de datos
+            // Insertar usuario en la base de datos con await
             const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
             const values = [nss, nombre, edad, sexoConvertido, contraseña];
     
-            await db.query(query, values);
+            await db.execute(query, values);
             return res.status(201).json({ message: "Usuario registrado correctamente." });
-    
+
         } catch (error) {
             console.error("Error en el registro:", error);
             return res.status(500).json({ error: "Error en el servidor al registrar el usuario." });
         }
     });
-    
 
-    app.post("/login", (req, res) => {
+    // 📌 Endpoint: Inicio de sesión
+    app.post("/login", async (req, res) => {
         try {
             const { nss, contraseña } = req.body;
             if (!nss || !contraseña) {
                 return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
             }
 
-            db.query("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña], (err, result) => {
-                if (err) return res.status(500).json({ error: err.message });
-                if (result.length === 0) return res.status(401).json({ error: "Credenciales inválidas." });
-                res.json({ message: "Inicio de sesión exitoso", usuario: result[0] });
-            });
+            const [result] = await db.execute("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña]);
+
+            if (result.length === 0) {
+                return res.status(401).json({ error: "Credenciales inválidas." });
+            }
+
+            res.json({ message: "Inicio de sesión exitoso", usuario: result[0] });
         } catch (error) {
             res.status(500).json({ error: "Error inesperado." });
         }
     });
 
-    app.post("/imagenes", upload.single("imagen"), (req, res) => {
+    // 📌 Endpoint: Subida de imágenes
+    app.post("/imagenes", upload.single("imagen"), async (req, res) => {
         try {
             if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
             const { usuario_nss, tipo, descripcion } = req.body;
             const url = req.file.location;
-            db.query("INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)",
-                [usuario_nss, tipo, url, descripcion],
-                (err) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    res.json({ message: "Imagen subida con éxito.", url });
-                }
-            );
+
+            await db.execute("INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)", 
+                [usuario_nss, tipo, url, descripcion]);
+
+            res.json({ message: "Imagen subida con éxito.", url });
         } catch (error) {
             res.status(500).json({ error: "Error inesperado." });
         }
     });
 
-    app.get("/imagenes/:nss", (req, res) => {
+    // 📌 Endpoint: Obtener imágenes por usuario
+    app.get("/imagenes/:nss", async (req, res) => {
         try {
             const { nss } = req.params;
-            db.query("SELECT * FROM imagenes WHERE usuario_nss = ?", [nss], (err, result) => {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json(result);
-            });
+            const [result] = await db.execute("SELECT * FROM imagenes WHERE usuario_nss = ?", [nss]);
+            res.json(result);
         } catch (error) {
             res.status(500).json({ error: "Error inesperado." });
         }
