@@ -133,17 +133,17 @@ async function iniciarServidor() {
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
-    app.post("/perfil", multer().single("imagen"), async (req, res) => {
+    // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
+    app.post("/perfil", upload.single("imagen"), async (req, res) => {
         try {
-            const { usuario_nss } = req.body;
             if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
-            
-            const [oldImage] = await db.execute(
-                "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-                [usuario_nss]
-            );
-            
-            const key = `imagenes/${Date.now()}-${req.file.originalname}`;
+
+            const { usuario_nss } = req.body;
+            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+
+            // 🔹 Generar un nombre único para la imagen de perfil
+            const key = `imagenes/perfil_${usuario_nss}.jpg`;
+
             const uploadParams = {
                 Bucket: "salud-magenes",
                 Key: key,
@@ -151,24 +151,25 @@ async function iniciarServidor() {
                 ACL: "public-read",
                 ContentType: req.file.mimetype
             };
-            await s3.upload(uploadParams).promise();
+
+            const command = new PutObjectCommand(uploadParams);
+            await s3Client.send(command);
+
             const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
-            
-            if (oldImage.length > 0) {
-                const oldKey = oldImage[0].url.split("/").pop();
-                await s3.deleteObject({ Bucket: "salud-magenes", Key: `imagenes/${oldKey}` }).promise();
-                await db.execute("DELETE FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [usuario_nss]);
-            }
-            
-            await db.execute(
-                "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'perfil', ?, 'Foto de perfil')",
-                [usuario_nss, imageUrl]
-            );
-            
+
+            // 🔹 Guardar o actualizar la foto de perfil en MySQL
+            const query = `
+                INSERT INTO imagenes (usuario_nss, tipo, url, descripcion)
+                VALUES (?, 'perfil', ?, 'Foto de perfil')
+                ON DUPLICATE KEY UPDATE url = VALUES(url), descripcion = 'Foto de perfil'
+            `;
+            await db.execute(query, [usuario_nss, imageUrl]);
+
             res.status(201).json({
                 message: "Foto de perfil actualizada con éxito.",
                 url: imageUrl
             });
+
         } catch (error) {
             console.error("❌ Error al subir la foto de perfil:", error);
             res.status(500).json({ error: "Error en el servidor al subir la imagen." });
@@ -236,7 +237,6 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
         }
     });
-
     // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
     app.get("/medicamentos/:nss", async (req, res) => {
         try {
