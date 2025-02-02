@@ -217,14 +217,11 @@ async function iniciarServidor() {
         }
     });
 
-
+    // 📌 Endpoint para obtener la foto de perfil del usuario
     app.get("/perfil/:nss", async (req, res) => {
         try {
             const { nss } = req.params;
-            const [result] = await db.promise().execute(
-                "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1", 
-                [nss]
-            );
+            const [result] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [nss]);
 
             if (result.length === 0) {
                 return res.status(404).json({ error: "No se encontró foto de perfil para este usuario." });
@@ -237,6 +234,7 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
         }
     });
+
     // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
     app.get("/medicamentos/:nss", async (req, res) => {
         try {
