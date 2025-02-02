@@ -305,45 +305,53 @@ app.get("/usuario/:nss", async (req, res) => {
 app.post("/tratamientos", async (req, res) => {
     try {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
-
         if (!usuario_nss || !nombre_tratamiento || !descripcion || !medicamentos || medicamentos.length === 0) {
             return res.status(400).json({ error: "Todos los campos son obligatorios y debe haber al menos un medicamento." });
         }
 
-        // 🔹 Insertar el tratamiento en la base de datos
         const [tratamiento] = await db.execute(
             "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
             [usuario_nss, nombre_tratamiento, descripcion]
         );
 
-        const tratamientoId = tratamiento.insertId; // Corregido: obtener el ID generado
+        const tratamientoId = tratamiento.insertId;
 
-        // 🔹 Insertar los medicamentos
         for (const med of medicamentos) {
             const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
-
             if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
                 return res.status(400).json({ error: "Cada medicamento debe incluir nombre, dosis, hora de inicio e intervalo." });
             }
 
-            await db.execute(
+            const [medicamento] = await db.execute(
                 "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
                 [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
             );
+
+            const medicamentoId = medicamento.insertId;
+
+            let horaAlarma = new Date();
+            horaAlarma.setHours(...hora_inicio.split(":"));
+            horaAlarma.setMinutes(0);
+            horaAlarma.setSeconds(0);
+
+            for (let i = 0; i < 5; i++) { 
+                horaAlarma.setHours(horaAlarma.getHours() + intervalo_horas);
+                await db.execute(
+                    "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                    [medicamentoId, usuario_nss, horaAlarma]
+                );
+            }
         }
 
-        res.status(201).json({ message: "Tratamiento y medicamentos agregados con éxito." });
+        res.status(201).json({ message: "Tratamiento, medicamentos y alarmas generados con éxito." });
     } catch (error) {
         console.error("❌ Error al registrar tratamiento:", error);
         res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
     }
 });
-
 app.get("/tratamientos/:nss", async (req, res) => {
     try {
         const { nss } = req.params;
-
-        // 🔹 Obtener los tratamientos del usuario
         const [tratamientos] = await db.execute(
             "SELECT * FROM tratamientos WHERE usuario_nss = ?",
             [nss]
@@ -353,7 +361,6 @@ app.get("/tratamientos/:nss", async (req, res) => {
             return res.status(404).json({ error: "No se encontraron tratamientos para este usuario." });
         }
 
-        // 🔹 Obtener los medicamentos de cada tratamiento
         for (let tratamiento of tratamientos) {
             const [medicamentos] = await db.execute(
                 "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
@@ -367,6 +374,61 @@ app.get("/tratamientos/:nss", async (req, res) => {
         console.error("❌ Error al obtener tratamientos:", error);
         res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
     }
+});
+app.get("/alarmas/:nss", async (req, res) => {
+    try {
+        const { nss } = req.params;
+
+        const [alarmas] = await db.execute(
+            `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento 
+             FROM alarmas a 
+             JOIN medicamentos m ON a.medicamento_id = m.id 
+             WHERE a.usuario_nss = ? 
+             ORDER BY a.hora_programada ASC`,
+            [nss]
+        );
+
+        if (alarmas.length === 0) {
+            return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
+        }
+
+        res.json(alarmas);
+    } catch (error) {
+        console.error("❌ Error al obtener alarmas:", error);
+        res.status(500).json({ error: "Error en el servidor al obtener las alarmas." });
+    }
+});
+app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { usuario_nss } = req.body;
+        if (!req.file) return res.status(400).json({ error: "No se recibió una imagen." });
+
+        const key = `imagenes/alarmas/${usuario_nss}_${Date.now()}.jpg`;
+        const uploadParams = {
+            Bucket: "salud-magenes",
+            Key: key,
+            Body: req.file.buffer,
+            ACL: "public-read",
+            ContentType: req.file.mimetype
+        };
+        await s3Client.send(new PutObjectCommand(uploadParams));
+
+        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+        await db.execute(
+            "UPDATE alarmas SET estado = 'Tomada', imagen_prueba = ? WHERE id = ?",
+            [imageUrl, id]
+        );
+
+        res.status(200).json({
+            message: "Alarma actualizada con éxito y foto subida.",
+            url: imageUrl
+        });
+    } catch (error) {
+        console.error("❌ Error al actualizar la alarma:", error);
+        res.status(500).json({ error: "Error en el servidor al actualizar la alarma." });
+    }
 });
 
 
