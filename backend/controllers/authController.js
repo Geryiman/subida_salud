@@ -1,10 +1,12 @@
-const db = require('../server'); // 📌 Importa `db` correctamente
+const getDB = require('../server'); // 📌 Importamos la función para obtener `db`
 const bcrypt = require('bcryptjs');
 
 exports.registerUser = async (req, res) => {
   const { nombre, nss, edad, sexo, password } = req.body;
 
   try {
+    const db = await getDB(); // 📌 Esperamos la conexión a MySQL
+
     db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
       if (err) {
         console.error('❌ Error en la base de datos:', err);
@@ -42,6 +44,8 @@ exports.loginUser = async (req, res) => {
   const { nss, password } = req.body;
 
   try {
+    const db = await getDB(); // 📌 Esperamos la conexión a MySQL
+
     db.query('SELECT * FROM usuarios WHERE nss = ?', [nss], async (err, results) => {
       if (err) {
         console.error('❌ Error en la base de datos:', err);
@@ -62,7 +66,6 @@ exports.loginUser = async (req, res) => {
         return res.status(400).json({ error: 'Contraseña incorrecta' });
       }
 
-      // 📌 Solo devolver el NSS en la respuesta
       res.json({ message: 'Inicio de sesión exitoso', nss: user.nss });
     });
   } catch (error) {

@@ -26,9 +26,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-    origin: (origin, callback) => {
-        callback(null, true);
-    },
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
 }));
@@ -41,7 +39,7 @@ app.get("/", (req, res) => {
 });
 
 // 📌 Rutas específicas
-app.use('/auth', authRoutes); 
+app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/treatments', treatmentRoutes);
 
@@ -71,7 +69,7 @@ async function downloadCertificate() {
   }
 }
 
-// 📌 Variable Global para la Base de Datos
+// 📌 Crear una instancia global de MySQL
 let db;
 
 // 📌 Función para conectar a MySQL
@@ -89,7 +87,10 @@ async function connectDB() {
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: process.env.DB_PORT,
-    ssl: { ca: certificate }, 
+    ssl: { ca: certificate },
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
   });
 
   console.log('🔄 Intentando conectar a MySQL...');
@@ -103,10 +104,13 @@ async function connectDB() {
       connection.release();
     }
   });
+
+  return db;
 }
 
 // 📌 Conectar a la base de datos antes de iniciar el servidor
-connectDB().then(() => {
+connectDB().then((database) => {
+  db = database; // 📌 Asignar la conexión globalmente
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
@@ -115,5 +119,10 @@ connectDB().then(() => {
   console.error('❌ Error al conectar a la base de datos:', err);
 });
 
-// 📌 Exportar `db` para ser usado en otros archivos
-module.exports = db;
+// 📌 Exportar `connectDB()`, NO `db` directamente
+module.exports = async () => {
+  if (!db) {
+    db = await connectDB();
+  }
+  return db;
+};
