@@ -12,10 +12,11 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 
 const app = express();
 
+// 📌 Middleware para configurar CORS (SIN `credentials: true`)
 app.use(cors({
-    origin: '*',
+    origin: '*', // ✅ Permite solicitudes desde cualquier origen
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'] // ✅ Permite enviar el NSS en los headers
 }));
 
 app.use(express.json());
