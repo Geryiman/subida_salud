@@ -122,31 +122,43 @@ async function iniciarServidor() {
         }
     });
 
- // 📌 Endpoint: Subida de imágenes a DigitalOcean Spaces
+// 📌 Endpoint: Subir imagen a DigitalOcean Spaces y guardar en MySQL
 app.post("/imagenes", upload.single("imagen"), async (req, res) => {
     try {
-        // Verificar que se haya subido un archivo
+        // 📌 Verificar si el archivo fue subido
         if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
         const { usuario_nss, tipo, descripcion } = req.body;
 
-        // 📌 Obtener la URL pública de la imagen en DigitalOcean Spaces
-        const url = req.file.location; // `req.file.location` ya es la URL pública en Spaces
+        // 📌 Validar que usuario_nss esté presente
+        if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+
+        // 📌 Validar que el tipo sea "perfil" o "medicamento"
+        if (!["perfil", "medicamento"].includes(tipo)) {
+            return res.status(400).json({ error: "El tipo debe ser 'perfil' o 'medicamento'." });
+        }
+
+        // 📌 Obtener la URL pública de la imagen
+        const imageUrl = req.file.location;
 
         // 📌 Guardar en la base de datos MySQL
         const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)";
-        const values = [usuario_nss, tipo, url, descripcion];
+        const values = [usuario_nss, tipo, imageUrl, descripcion];
 
         await db.execute(query, values);
 
-        // 📌 Responder con éxito
-        res.status(201).json({ message: "Imagen subida con éxito.", url });
+        // 📌 Responder con éxito enviando la URL de la imagen
+        res.status(201).json({
+            message: "Imagen subida con éxito.",
+            url: imageUrl
+        });
 
     } catch (error) {
         console.error("❌ Error al subir la imagen:", error);
         res.status(500).json({ error: "Error en el servidor al subir la imagen." });
     }
 });
+
 
 
     // 📌 Endpoint: Obtener imágenes por usuario
