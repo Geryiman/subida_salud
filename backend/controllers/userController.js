@@ -1,5 +1,5 @@
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const db = require('../config/db');
+const db = require('../server'); // 📌 Importa `db` desde `server.js`
 
 // Configuración de DigitalOcean Spaces con AWS SDK v3
 const s3 = new S3Client({
@@ -50,28 +50,25 @@ exports.getUserProfile = async (req, res) => {
   const { nss } = req.query;
 
   if (!nss) {
-    return res.status(400).json({ error: 'NSS es requerido' });
+      return res.status(400).json({ error: 'NSS es requerido' });
   }
 
   try {
-    db.query(
-      'SELECT nombre, nss, edad, sexo, fotoPerfil FROM usuarios WHERE nss = ?',
-      [nss],
-      (err, results) => {
-        if (err) {
-          console.error('Error al obtener datos del usuario:', err);
-          return res.status(500).json({ error: 'Error al obtener los datos del perfil' });
-        }
+      const connection = await db().getConnection(); // 📌 Usar `await db()`
+      const [results] = await connection.query(
+          'SELECT nombre, nss, edad, sexo, fotoPerfil FROM usuarios WHERE nss = ?',
+          [nss]
+      );
 
-        if (results.length === 0) {
+      connection.release(); // 📌 Liberar la conexión
+
+      if (results.length === 0) {
           return res.status(404).json({ error: 'Usuario no encontrado' });
-        }
-
-        res.json(results[0]); // 📌 Enviar los datos del usuario al frontend
       }
-    );
+
+      res.json(results[0]); // 📌 Enviar los datos del usuario al frontend
   } catch (err) {
-    console.error('Error en la consulta del perfil:', err);
-    res.status(500).json({ error: 'Error al obtener los datos del perfil' });
+      console.error('Error en la consulta del perfil:', err);
+      res.status(500).json({ error: 'Error al obtener los datos del perfil' });
   }
 };

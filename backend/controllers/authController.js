@@ -1,4 +1,4 @@
-const db = require('../config/db');
+const db = require('../server');
 const bcrypt = require('bcryptjs');
 
 exports.registerUser = async (req, res) => {

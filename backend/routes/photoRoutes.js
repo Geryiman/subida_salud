@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { savePhoto, getPhotos, savePushToken } = require('../controllers/photoController');
 const authenticateToken = require('../middleware/authMiddleware');

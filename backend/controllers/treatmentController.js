@@ -1,4 +1,4 @@
-const db = require('../config/db');
+const db = require('../server');
 
 exports.getTreatments = (req, res) => {
   const { nss } = req.user;
