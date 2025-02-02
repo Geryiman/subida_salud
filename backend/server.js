@@ -1,5 +1,5 @@
 const express = require("express");
-const mysql = require("mysql2/promise"); // Importamos la versión basada en promesas
+const mysql = require("mysql2/promise"); // Importamos MySQL con Promesas
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const multer = require("multer");
@@ -48,31 +48,37 @@ async function iniciarServidor() {
 
     // 📌 Configuración de DigitalOcean Spaces
     const s3Client = new S3Client({
-        endpoint: "https://sfo2.digitaloceanspaces.com", // Endpoint correcto
+        endpoint: "https://sfo2.digitaloceanspaces.com",
         region: "sfo2",
         credentials: {
-            accessKeyId: "DO00F92NFGUU9UR29VYV", // 🔥 Credenciales directamente en el código
+            accessKeyId: "DO00F92NFGUU9UR29VYV", // 🔥 Credenciales visibles (NO recomendado en producción)
             secretAccessKey: "pr0SzcMGY9zK/TaqelriS6oZJU+D/3K5CHsM7qDyYZU"
         }
     });
 
-    // 📌 Configuración de Multer para manejar archivos
+    // 📌 Configuración de Multer para manejar archivos en memoria
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
-    // 📌 Endpoint para subir imágenes a DigitalOcean Spaces
+    // 📌 Endpoint para subir imágenes a DigitalOcean Spaces y guardarlas en MySQL
     app.post("/imagenes", upload.single("imagen"), async (req, res) => {
         try {
+            console.log("📤 Recibiendo archivo...");
+
             if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
             const { usuario_nss, tipo, descripcion } = req.body;
-            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+            console.log("📌 Datos recibidos:", usuario_nss, tipo, descripcion);
 
-            // Generar un nombre único para la imagen
+            if (!usuario_nss || !tipo || !descripcion) {
+                return res.status(400).json({ error: "Todos los campos son obligatorios." });
+            }
+
+            // 🔹 Generar un nombre único para la imagen
             const key = `imagenes/${Date.now()}-${req.file.originalname}`;
 
             const uploadParams = {
-                Bucket: "salud-magenes", // 🔥 Nombre del bucket en DigitalOcean Spaces
+                Bucket: "salud-magenes",
                 Key: key,
                 Body: req.file.buffer,
                 ACL: "public-read",
@@ -84,8 +90,13 @@ async function iniciarServidor() {
 
             const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
+            // 🔹 Guardar en MySQL
+            const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, ?, ?, ?)";
+            await db.execute(query, [usuario_nss, tipo, imageUrl, descripcion]);
+
+            console.log("✅ Imagen subida con éxito:", imageUrl);
             res.status(201).json({
-                message: "Imagen subida con éxito.",
+                message: "Imagen subida y guardada en la base de datos con éxito.",
                 url: imageUrl
             });
 
@@ -95,7 +106,7 @@ async function iniciarServidor() {
         }
     });
 
-    // 📌 Endpoint para obtener imágenes por usuario
+    // 📌 Endpoint para obtener la última imagen subida por usuario
     app.get("/imagenes/:nss", async (req, res) => {
         try {
             const { nss } = req.params;
@@ -121,7 +132,6 @@ async function iniciarServidor() {
             return res.status(400).json({ error: "Todos los campos son obligatorios." });
         }
 
-        // Convertir "M" a "Masculino" y "F" a "Femenino"
         let sexoConvertido = sexo;
         if (sexo.toUpperCase() === "M") sexoConvertido = "Masculino";
         else if (sexo.toUpperCase() === "F") sexoConvertido = "Femenino";
@@ -133,8 +143,7 @@ async function iniciarServidor() {
 
         try {
             const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
-            const values = [nss, nombre, edad, sexoConvertido, contraseña];
-            await db.execute(query, values);
+            await db.execute(query, [nss, nombre, edad, sexoConvertido, contraseña]);
 
             res.status(201).json({ message: "Usuario registrado correctamente." });
 
