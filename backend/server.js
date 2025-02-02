@@ -305,24 +305,28 @@ app.get("/usuario/:nss", async (req, res) => {
 app.post("/tratamientos", async (req, res) => {
     try {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
-        if (!usuario_nss || !nombre_tratamiento || !medicamentos || medicamentos.length === 0) {
+
+        if (!usuario_nss || !nombre_tratamiento || !descripcion || !medicamentos || medicamentos.length === 0) {
             return res.status(400).json({ error: "Todos los campos son obligatorios y debe haber al menos un medicamento." });
         }
 
+        // 🔹 Insertar el tratamiento en la base de datos
         const [tratamiento] = await db.execute(
             "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
             [usuario_nss, nombre_tratamiento, descripcion]
         );
 
-        const tratamientoId = tratamiento.insertId;
+        const tratamientoId = tratamiento.insertId; // Corregido: obtener el ID generado
 
+        // 🔹 Insertar los medicamentos
         for (const med of medicamentos) {
             const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
+
             if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
                 return res.status(400).json({ error: "Cada medicamento debe incluir nombre, dosis, hora de inicio e intervalo." });
             }
 
-            const [medicamento] = await db.execute(
+            await db.execute(
                 "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
                 [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
             );
@@ -331,8 +335,8 @@ app.post("/tratamientos", async (req, res) => {
         res.status(201).json({ message: "Tratamiento y medicamentos agregados con éxito." });
     } catch (error) {
         console.error("❌ Error al registrar tratamiento:", error);
-        res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
-    }
+        res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
+    }
 });
 
 app.get("/tratamientos/:nss", async (req, res) => {
