@@ -12,12 +12,24 @@ const treatmentRoutes = require('./routes/treatmentRoutes');
 
 const app = express();
 
-// 📌 Middleware para configurar CORS (SIN `credentials: true`)
-app.use(cors({
-    origin: '*', // ✅ Permite solicitudes desde cualquier origen
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'] // ✅ Permite enviar el NSS en los headers
-}));
+// 📌 Middleware para configurar CORS dinámicamente
+app.use((req, res, next) => {
+  const origin = req.headers.origin; // 📌 Captura el origen de la petición
+
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin); // ✅ Permite el origen dinámicamente
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true"); // ✅ Permite credenciales
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200); // 📌 Responder a preflight request sin problemas
+  }
+
+  next();
+});
 
 app.use(express.json());
 
