@@ -22,10 +22,11 @@ async function downloadCertificate() {
   try {
     console.log('📥 Descargando certificado desde DigitalOcean Spaces...');
     const response = await axios.get(CERTIFICATE_URL, { responseType: 'arraybuffer' });
+    console.log('📥 Respuesta de la descarga:', response.status, response.statusText);
     fs.writeFileSync(CERTIFICATE_PATH, response.data);
     console.log('✅ Certificado descargado y guardado correctamente en:', CERTIFICATE_PATH);
   } catch (error) {
-    console.error('❌ Error al descargar el certificado:', error);
+    console.error('❌ Error al descargar el certificado:', error.message);
     process.exit(1);
   }
 }
@@ -36,6 +37,7 @@ async function connectDB() {
 
   // Leer el certificado descargado
   const certificate = fs.readFileSync(CERTIFICATE_PATH);
+  console.log('✅ Certificado leído correctamente.');
 
   // Configurar la conexión MySQL
   const db = mysql.createPool({
@@ -46,6 +48,8 @@ async function connectDB() {
     port: process.env.DB_PORT,
     ssl: { ca: certificate }, // Conectar con SSL
   });
+
+  console.log('🔄 Intentando conectar a MySQL...');
 
   // 📌 Probar la conexión
   db.getConnection((err, connection) => {
@@ -61,4 +65,4 @@ async function connectDB() {
 }
 
 // 📌 Exportar la conexión asegurando que se ejecute la función
-module.exports = connectDB();
+module.exports = connectDB;
