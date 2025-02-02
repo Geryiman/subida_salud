@@ -9,7 +9,7 @@ const fs = require("fs");
 const axios = require("axios");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -25,7 +25,7 @@ async function descargarCertificado() {
         console.log("✅ Certificado SSL descargado correctamente.");
     } catch (error) {
         console.error("❌ Error descargando el certificado SSL:", error);
-        process.exit(1); // Sale del proceso si no puede descargar el certificado
+        process.exit(1); // Salir si no se puede descargar el certificado
     }
 }
 
@@ -73,6 +73,15 @@ async function iniciarServidor() {
     });
 
     // 📌 Rutas del API
+    app.get("/", (req, res) => {
+        console.log("🚀 Funcionando al 1000%");
+        res.send("¡El servidor está funcionando al 1000%!");
+    });
+
+    app.get("/health", (req, res) => {
+        res.status(200).json({ status: "ok", message: "Health check passed!" });
+    });
+
     app.post("/usuarios", (req, res) => {
         const { nss, nombre, edad, sexo, contraseña } = req.body;
         db.query("INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)",
@@ -164,18 +173,12 @@ async function iniciarServidor() {
             else res.json(result);
         });
     });
-    app.get('/health', (req, res) => {
-      res.status(200).json({ status: 'ok', message: 'Health check passed!' });
-  });
-  
 
     // Iniciar el servidor
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
-  });
-  
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
+    });
 }
-
 
 // 📌 Inicia el servidor después de descargar el certificado
 iniciarServidor();
