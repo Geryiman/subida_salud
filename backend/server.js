@@ -116,4 +116,4 @@ connectDB().then(() => {
 });
 
 // 📌 Exportar `db` para ser usado en otros archivos
-module.exports = () => db;
+module.exports = db;
