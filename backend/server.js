@@ -180,6 +180,36 @@ async function iniciarServidor() {
         }
     });
 
+    // 📌 Endpoint para obtener la información completa del usuario
+app.get("/usuario/:nss", async (req, res) => {
+    try {
+        const { nss } = req.params;
+
+        // 🔹 Obtener datos del usuario
+        const [userResult] = await db.execute("SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?", [nss]);
+        if (userResult.length === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        // 🔹 Obtener foto de perfil
+        const [imageResult] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [nss]);
+        const userImage = imageResult.length > 0 ? imageResult[0].url : null;
+
+        res.json({
+            nss,
+            nombre: userResult[0].nombre,
+            edad: userResult[0].edad,
+            sexo: userResult[0].sexo,
+            fotoPerfil: userImage,
+        });
+
+    } catch (error) {
+        console.error("❌ Error al obtener la información del usuario:", error);
+        res.status(500).json({ error: "Error en el servidor al obtener la información." });
+    }
+});
+
+
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
 }
 
