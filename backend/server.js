@@ -67,6 +67,7 @@ async function iniciarServidor() {
             acl: "public-read",
             key: (req, file, cb) => {
                 const fileName = `imagenes/${Date.now()}-${file.originalname}`;
+                console.log(`[IMAGENES] Guardando archivo con nombre: ${fileName}`);
                 cb(null, fileName);
             }
         })
@@ -82,11 +83,28 @@ async function iniciarServidor() {
         res.status(200).json({ status: "ok", message: "Health check passed!" });
     });
 
+    // 📌 Registro de Usuario
+    app.post("/usuarios", (req, res) => {
+        const { nss, nombre, edad, sexo, contraseña } = req.body;
+        db.query("INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)",
+            [nss, nombre, edad, sexo, contraseña],
+            (err, result) => {
+                if (err) {
+                    console.error(`[USUARIOS] Error al registrar usuario: ${err}`);
+                    res.status(500).json({ error: err });
+                } else {
+                    console.log(`[USUARIOS] Usuario registrado: NSS=${nss}`);
+                    res.json({ message: "Usuario registrado" });
+                }
+            }
+        );
+    });
+
+    // 📌 Inicio de Sesión
     app.post("/login", (req, res) => {
         const { nss, contraseña } = req.body;
         console.log(`[LOGIN] Intento de inicio de sesión para NSS: ${nss}`);
 
-        // Validar que se proporcionen NSS y contraseña
         if (!nss || !contraseña) {
             console.error("[LOGIN] NSS o contraseña no proporcionados.");
             return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
@@ -111,10 +129,64 @@ async function iniciarServidor() {
         });
     });
 
+    // 📌 Obtener Perfil del Usuario
+    app.get("/perfil/:nss", (req, res) => {
+        const { nss } = req.params;
+
+        db.query("SELECT * FROM usuarios WHERE nss = ?", [nss], (err, usuarioResult) => {
+            if (err) {
+                console.error(`[PERFIL] Error de MySQL: ${err}`);
+                return res.status(500).json({ error: "Error interno del servidor." });
+            }
+            if (usuarioResult.length === 0) {
+                console.log(`[PERFIL] Usuario no encontrado: NSS=${nss}`);
+                return res.status(404).json({ error: "Usuario no encontrado." });
+            }
+
+            let usuario = usuarioResult[0];
+
+            const queryTratamientos = "SELECT * FROM tratamientos WHERE usuario_nss = ?";
+            db.query(queryTratamientos, [nss], (err, tratamientosResult) => {
+                if (err) {
+                    console.error(`[PERFIL] Error al obtener tratamientos: ${err}`);
+                    return res.status(500).json({ error: "Error interno del servidor." });
+                }
+                usuario.tratamientos = tratamientosResult;
+
+                const tratamientoIds = tratamientosResult.map(t => t.id);
+                if (tratamientoIds.length > 0) {
+                    const queryMedicamentos = "SELECT * FROM medicamentos WHERE tratamiento_id IN (?)";
+                    db.query(queryMedicamentos, [tratamientoIds], (err, medicamentosResult) => {
+                        if (err) {
+                            console.error(`[PERFIL] Error al obtener medicamentos: ${err}`);
+                            return res.status(500).json({ error: "Error interno del servidor." });
+                        }
+                        usuario.medicamentos = medicamentosResult;
+
+                        const queryAlarmas = "SELECT * FROM alarmas WHERE usuario_nss = ?";
+                        db.query(queryAlarmas, [nss], (err, alarmasResult) => {
+                            if (err) {
+                                console.error(`[PERFIL] Error al obtener alarmas: ${err}`);
+                                return res.status(500).json({ error: "Error interno del servidor." });
+                            }
+                            usuario.alarmas = alarmasResult;
+
+                            res.json(usuario);
+                        });
+                    });
+                } else {
+                    usuario.medicamentos = [];
+                    usuario.alarmas = [];
+                    res.json(usuario);
+                }
+            });
+        });
+    });
+
+    // 📌 Subir Imágenes
     app.post("/imagenes", upload.single("imagen"), (req, res) => {
         console.log("[IMAGENES] Solicitud para subir imagen recibida.");
         const { usuario_nss, tipo, descripcion } = req.body;
-        console.log(`[IMAGENES] Datos recibidos: usuario_nss=${usuario_nss}, tipo=${tipo}, descripcion=${descripcion}`);
 
         if (!req.file) {
             console.error("[IMAGENES] No se recibió un archivo.");
@@ -136,6 +208,7 @@ async function iniciarServidor() {
         );
     });
 
+    // 📌 Obtener Imágenes por Usuario
     app.get("/imagenes/:nss", (req, res) => {
         const { nss } = req.params;
         console.log(`[IMAGENES] Solicitud para obtener imágenes de NSS: ${nss}`);
