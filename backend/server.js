@@ -70,28 +70,42 @@ async function iniciarServidor() {
 
     // 📌 Rutas con mejor control de errores
 
-    app.post("/usuarios", async (req, res) => {
+    app.post('/usuarios', async (req, res) => {
+        const { nss, nombre, edad, sexo, contraseña } = req.body;
+    
+        // Verificar que todos los campos estén presentes
+        if (!nss || !nombre || !edad || !sexo || !contraseña) {
+            return res.status(400).json({ error: "Todos los campos son obligatorios." });
+        }
+    
+        // Convertir "M" a "Masculino" y "F" a "Femenino"
+        let sexoConvertido = sexo;
+        if (sexo.toUpperCase() === "M") {
+            sexoConvertido = "Masculino";
+        } else if (sexo.toUpperCase() === "F") {
+            sexoConvertido = "Femenino";
+        }
+    
+        // Validar que el sexo sea "Masculino", "Femenino" o "Otro"
+        const valoresPermitidos = ["Masculino", "Femenino", "Otro"];
+        if (!valoresPermitidos.includes(sexoConvertido)) {
+            return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Masculino', 'Femenino' o 'Otro'." });
+        }
+    
         try {
-            const { nss, nombre, edad, sexo, contraseña } = req.body;
-            if (!nss || !nombre || !edad || !sexo || !contraseña) {
-                return res.status(400).json({ error: "Todos los campos son obligatorios." });
-            }
-            
-            if (!["M", "F"].includes(sexo.toUpperCase())) {
-                return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'M' o 'F'." });
-            }
-            
-            db.query("INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)",
-                [nss, nombre, edad, sexo.toUpperCase(), contraseña],
-                (err) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    res.json({ message: "Usuario registrado correctamente." });
-                }
-            );
+            // Insertar el usuario en la base de datos
+            const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
+            const values = [nss, nombre, edad, sexoConvertido, contraseña];
+    
+            await db.query(query, values);
+            return res.status(201).json({ message: "Usuario registrado correctamente." });
+    
         } catch (error) {
-            res.status(500).json({ error: "Error inesperado." });
+            console.error("Error en el registro:", error);
+            return res.status(500).json({ error: "Error en el servidor al registrar el usuario." });
         }
     });
+    
 
     app.post("/login", (req, res) => {
         try {
