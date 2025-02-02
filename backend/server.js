@@ -133,48 +133,74 @@ async function iniciarServidor() {
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
-    // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
-    app.post("/perfil", upload.single("imagen"), async (req, res) => {
-        try {
-            if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
+  // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
+app.post("/perfil", upload.single("imagen"), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
-            const { usuario_nss } = req.body;
-            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+        const { usuario_nss } = req.body;
+        if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
 
-            // 🔹 Generar un nombre único para la imagen de perfil
-            const key = `imagenes/perfil_${usuario_nss}.jpg`;
+        // 🔹 Buscar la imagen de perfil actual en la base de datos
+        const [existingImage] = await db.execute(
+            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+            [usuario_nss]
+        );
 
-            const uploadParams = {
+        if (existingImage.length > 0) {
+            const imageUrl = existingImage[0].url;
+            const keyToDelete = imageUrl.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1];
+
+            // 🔹 Eliminar la imagen anterior de DigitalOcean Spaces
+            const deleteParams = {
                 Bucket: "salud-magenes",
-                Key: key,
-                Body: req.file.buffer,
-                ACL: "public-read",
-                ContentType: req.file.mimetype
+                Key: keyToDelete
             };
 
-            const command = new PutObjectCommand(uploadParams);
-            await s3Client.send(command);
+            try {
+                const deleteCommand = new DeleteObjectCommand(deleteParams);
+                await s3Client.send(deleteCommand);
+                console.log("✅ Imagen anterior eliminada:", keyToDelete);
+            } catch (deleteError) {
+                console.error("❌ Error al eliminar la imagen anterior:", deleteError);
+            }
 
-            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
-
-            // 🔹 Guardar o actualizar la foto de perfil en MySQL
-            const query = `
-                INSERT INTO imagenes (usuario_nss, tipo, url, descripcion)
-                VALUES (?, 'perfil', ?, 'Foto de perfil')
-                ON DUPLICATE KEY UPDATE url = VALUES(url), descripcion = 'Foto de perfil'
-            `;
-            await db.execute(query, [usuario_nss, imageUrl]);
-
-            res.status(201).json({
-                message: "Foto de perfil actualizada con éxito.",
-                url: imageUrl
-            });
-
-        } catch (error) {
-            console.error("❌ Error al subir la foto de perfil:", error);
-            res.status(500).json({ error: "Error en el servidor al subir la imagen." });
+            // 🔹 Eliminar la imagen de la base de datos
+            await db.execute("DELETE FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [usuario_nss]);
         }
-    });
+
+        // 🔹 Subir la nueva imagen a DigitalOcean Spaces
+        const key = `imagenes/perfil_${usuario_nss}.jpg`;
+        const uploadParams = {
+            Bucket: "salud-magenes",
+            Key: key,
+            Body: req.file.buffer,
+            ACL: "public-read",
+            ContentType: req.file.mimetype
+        };
+
+        const uploadCommand = new PutObjectCommand(uploadParams);
+        await s3Client.send(uploadCommand);
+
+        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+        // 🔹 Guardar la nueva foto en la base de datos
+        await db.execute(
+            "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'perfil', ?, 'Foto de perfil')",
+            [usuario_nss, imageUrl]
+        );
+
+        res.status(201).json({
+            message: "Foto de perfil actualizada con éxito.",
+            url: imageUrl
+        });
+
+    } catch (error) {
+        console.error("❌ Error al subir la foto de perfil:", error);
+        res.status(500).json({ error: "Error en el servidor al subir la imagen." });
+    }
+});
+
 
     // 📌 Endpoint para subir imágenes de medicamentos
     app.post("/medicamentos", upload.single("imagen"), async (req, res) => {
@@ -217,23 +243,27 @@ async function iniciarServidor() {
         }
     });
 
-    // 📌 Endpoint para obtener la foto de perfil del usuario
-    app.get("/perfil/:nss", async (req, res) => {
-        try {
-            const { nss } = req.params;
-            const [result] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [nss]);
+// 📌 Endpoint para obtener la última foto de perfil del usuario
+app.get("/perfil/:nss", async (req, res) => {
+    try {
+        const { nss } = req.params;
+        const [result] = await db.execute(
+            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+            [nss]
+        );
 
-            if (result.length === 0) {
-                return res.status(404).json({ error: "No se encontró foto de perfil para este usuario." });
-            }
-
-            res.json({ url: result[0].url });
-
-        } catch (error) {
-            console.error("❌ Error al obtener la foto de perfil:", error);
-            res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
+        if (result.length === 0) {
+            return res.status(404).json({ error: "No se encontró foto de perfil para este usuario." });
         }
-    });
+
+        res.json({ url: result[0].url });
+
+    } catch (error) {
+        console.error("❌ Error al obtener la última foto de perfil:", error);
+        res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
+    }
+});
+
 
     // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
     app.get("/medicamentos/:nss", async (req, res) => {
