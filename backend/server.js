@@ -342,6 +342,8 @@ app.post("/tratamientos", async (req, res) => {
 app.get("/tratamientos/:nss", async (req, res) => {
     try {
         const { nss } = req.params;
+
+        // 🔹 Obtener los tratamientos del usuario
         const [tratamientos] = await db.execute(
             "SELECT * FROM tratamientos WHERE usuario_nss = ?",
             [nss]
@@ -351,6 +353,7 @@ app.get("/tratamientos/:nss", async (req, res) => {
             return res.status(404).json({ error: "No se encontraron tratamientos para este usuario." });
         }
 
+        // 🔹 Obtener los medicamentos de cada tratamiento
         for (let tratamiento of tratamientos) {
             const [medicamentos] = await db.execute(
                 "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
@@ -362,9 +365,10 @@ app.get("/tratamientos/:nss", async (req, res) => {
         res.json(tratamientos);
     } catch (error) {
         console.error("❌ Error al obtener tratamientos:", error);
-        res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
-    }
+        res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
+    }
 });
+
 
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
