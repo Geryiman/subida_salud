@@ -302,220 +302,142 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la información." });
         }
     });
-    // 📌 Endpoint para registrar tratamientos y generar alarmas dinámicamente
-    app.post("/tratamientos", async (req, res) => {
-        try {
-            const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
-            if (!usuario_nss || !nombre_tratamiento || !descripcion || !medicamentos || medicamentos.length === 0) {
-                return res.status(400).json({ error: "Todos los campos son obligatorios y debe haber al menos un medicamento." });
-            }
 
-            // Crear tratamiento
-            const [tratamiento] = await db.execute(
-                "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
-                [usuario_nss, nombre_tratamiento, descripcion]
+// 📌 Endpoint para registrar tratamientos
+app.post("/tratamientos", async (req, res) => {
+    const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
+    try {
+        const [tratamiento] = await db.execute(
+            "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
+            [usuario_nss, nombre_tratamiento, descripcion]
+        );
+
+        const tratamientoId = tratamiento.insertId;
+
+        for (const med of medicamentos) {
+            const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
+            const [medicamento] = await db.execute(
+                "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
+                [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
             );
 
-            const tratamientoId = tratamiento.insertId;
+            const medicamentoId = medicamento.insertId;
+            const horaInicio = new Date(`1970-01-01T${hora_inicio}Z`);
 
-            for (const med of medicamentos) {
-                const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
-                if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
-                    return res.status(400).json({ error: "Cada medicamento debe incluir nombre, dosis, hora de inicio e intervalo." });
-                }
-
-                const [medicamento] = await db.execute(
-                    "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
-                    [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
+            for (let i = 0; i < 5; i++) {
+                const horaAlarma = new Date(horaInicio.getTime() + i * intervalo_horas * 60 * 60 * 1000);
+                await db.execute(
+                    "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada) VALUES (?, ?, ?)",
+                    [medicamentoId, usuario_nss, horaAlarma]
                 );
-
-                const medicamentoId = medicamento.insertId;
-                const horaInicio = new Date(hora_inicio);
-
-                // Generar alarmas solo para el próximo día
-                for (let i = 0; i < 8; i++) {
-                    const horaAlarma = new Date(horaInicio.getTime() + i * intervalo_horas * 60 * 60 * 1000);
-                    if (horaAlarma > new Date()) {
-                        await db.execute(
-                            "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
-                            [medicamentoId, usuario_nss, horaAlarma]
-                        );
-                    }
-                }
             }
-
-            res.status(201).json({ message: "Tratamiento y alarmas generados con éxito." });
-        } catch (error) {
-            console.error("❌ Error al registrar tratamiento:", error);
-            res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
         }
-    });
 
-    // 📌 Endpoint para obtener las próximas alarmas sin duplicados
-    app.get("/alarmas/:nss", async (req, res) => {
-        try {
-            const { nss } = req.params;
+        res.status(201).json({ message: "Tratamiento y alarmas generados exitosamente." });
+    } catch (error) {
+        console.error("❌ Error al registrar tratamiento:", error);
+        res.status(500).json({ error: "Error al registrar tratamiento." });
+    }
+});
 
-            const [alarmas] = await db.execute(
-                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
-                 FROM alarmas a
-                 JOIN medicamentos m ON a.medicamento_id = m.id
-                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
-                 ORDER BY a.hora_programada ASC`,
-                [nss]
+// 📌 Endpoint para obtener tratamientos por usuario
+app.get("/tratamientos/:nss", async (req, res) => {
+    const { nss } = req.params;
+    try {
+        const [tratamientos] = await db.execute(
+            "SELECT * FROM tratamientos WHERE usuario_nss = ?",
+            [nss]
+        );
+
+        for (const tratamiento of tratamientos) {
+            const [medicamentos] = await db.execute(
+                "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
+                [tratamiento.id]
             );
-
-            if (alarmas.length === 0) {
-                return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
-            }
-
-            // Filtrar para eliminar duplicados de medicamentos, dejando solo la próxima alarma por medicamento
-            const uniqueAlarms = alarmas.reduce((acc, alarm) => {
-                if (!acc.some((a) => a.nombre_medicamento === alarm.nombre_medicamento)) {
-                    acc.push(alarm);
-                }
-                return acc;
-            }, []);
-
-            res.json(uniqueAlarms);
-        } catch (error) {
-            console.error("❌ Error al obtener alarmas:", error);
-            res.status(500).json({ error: "Error en el servidor al obtener alarmas." });
+            tratamiento.medicamentos = medicamentos;
         }
-    });
-    app.get("/alarmas/:nss", async (req, res) => {
-        try {
-            const { nss } = req.params;
 
-            // Obtener alarmas pendientes ordenadas por hora programada
-            const [alarmas] = await db.execute(
-                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
-                 FROM alarmas a
-                 JOIN medicamentos m ON a.medicamento_id = m.id
-                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
-                 ORDER BY a.hora_programada ASC`,
-                [nss]
-            );
+        res.json(tratamientos);
+    } catch (error) {
+        console.error("❌ Error al obtener tratamientos:", error);
+        res.status(500).json({ error: "Error al obtener tratamientos." });
+    }
+});
 
-            if (alarmas.length === 0) {
-                return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
-            }
+// 📌 Endpoint para obtener alarmas por usuario
+app.get("/alarmas/:nss", async (req, res) => {
+    const { nss } = req.params;
+    try {
+        const [alarmas] = await db.execute(
+            `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
+             FROM alarmas a
+             JOIN medicamentos m ON a.medicamento_id = m.id
+             WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+             ORDER BY a.hora_programada ASC`,
+            [nss]
+        );
 
-            // Filtrar duplicados: solo dejar una alarma por medicamento
-            const uniqueAlarms = alarmas.reduce((acc, alarm) => {
-                if (!acc.some((a) => a.nombre_medicamento === alarm.nombre_medicamento)) {
-                    acc.push(alarm);
-                }
-                return acc;
-            }, []);
+        res.json(alarmas);
+    } catch (error) {
+        console.error("❌ Error al obtener alarmas:", error);
+        res.status(500).json({ error: "Error al obtener alarmas." });
+    }
+});
 
-            res.json(uniqueAlarms);
-        } catch (error) {
-            console.error("❌ Error al obtener alarmas:", error);
-            res.status(500).json({ error: "Error en el servidor al obtener alarmas." });
+// 📌 Endpoint para apagar una alarma con foto
+app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
+    const { id } = req.params;
+    const { usuario_nss } = req.body;
+
+    if (!req.file) {
+        return res.status(400).json({ error: "Se requiere una imagen para apagar la alarma." });
+    }
+
+    try {
+        const [alarma] = await db.execute(
+            `SELECT a.id, a.hora_programada, m.nombre_medicamento, u.nombre
+             FROM alarmas a
+             JOIN medicamentos m ON a.medicamento_id = m.id
+             JOIN usuarios u ON a.usuario_nss = u.nss
+             WHERE a.id = ? AND a.usuario_nss = ?`,
+            [id, usuario_nss]
+        );
+
+        if (alarma.length === 0) {
+            return res.status(404).json({ error: "No se encontró la alarma o ya fue tomada." });
         }
-    });
 
-    app.get("/tratamientos/:nss", async (req, res) => {
-        try {
-            const { nss } = req.params;
+        const key = `imagenes/alarmas/${usuario_nss}_${Date.now()}.jpg`;
 
-            // Obtener tratamientos del usuario
-            const [tratamientos] = await db.execute(
-                `SELECT id, nombre_tratamiento, descripcion 
-                 FROM tratamientos 
-                 WHERE usuario_nss = ?`,
-                [nss]
-            );
+        const uploadParams = {
+            Bucket: "salud-magenes",
+            Key: key,
+            Body: req.file.buffer,
+            ACL: "public-read",
+            ContentType: req.file.mimetype
+        };
+        await s3Client.send(new PutObjectCommand(uploadParams));
 
-            if (tratamientos.length === 0) {
-                return res.status(404).json({ error: "No se encontraron tratamientos para este usuario." });
-            }
+        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
-            // Obtener medicamentos para cada tratamiento y agregar alarmas
-            for (let tratamiento of tratamientos) {
-                const [medicamentos] = await db.execute(
-                    `SELECT m.id AS medicamento_id, m.nombre_medicamento, m.dosis, m.hora_inicio, m.intervalo_horas, 
-                            (SELECT COUNT(*) FROM alarmas WHERE medicamento_id = m.id AND estado = 'Pendiente') AS alarmas_pendientes
-                     FROM medicamentos m
-                     WHERE m.tratamiento_id = ?`,
-                    [tratamiento.id]
-                );
-                tratamiento.medicamentos = medicamentos;
-            }
+        await db.execute(
+            "UPDATE alarmas SET estado = 'Tomada', descripcion = ?, imagen_prueba = ? WHERE id = ?",
+            [
+                `Foto tomada por ${alarma[0].nombre} para el medicamento ${alarma[0].nombre_medicamento} a las ${alarma[0].hora_programada}`,
+                imageUrl,
+                id
+            ]
+        );
 
-            res.json(tratamientos);
-        } catch (error) {
-            console.error("❌ Error al obtener tratamientos:", error);
-            res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
-        }
-    });
-    app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
-        try {
-            const { id } = req.params; // ID de la alarma
-            const { usuario_nss } = req.body;
-    
-            // Validar que se haya recibido una imagen
-            if (!req.file) {
-                return res.status(400).json({ error: "Se requiere una imagen para apagar la alarma." });
-            }
-    
-            // Obtener información de la alarma, incluyendo el medicamento y la hora programada
-            const [alarmas] = await db.execute(
-                `SELECT a.id, a.hora_programada, m.nombre_medicamento, u.nombre AS nombre_usuario
-                 FROM alarmas a
-                 JOIN medicamentos m ON a.medicamento_id = m.id
-                 JOIN usuarios u ON a.usuario_nss = u.nss
-                 WHERE a.id = ? AND a.usuario_nss = ? AND a.estado = 'Pendiente'`,
-                [id, usuario_nss]
-            );
-    
-            if (alarmas.length === 0) {
-                return res.status(404).json({ error: "No se encontró la alarma o ya fue apagada." });
-            }
-    
-            const alarma = alarmas[0];
-    
-            // Crear un nombre único para la imagen
-            const key = `imagenes/alarmas/${usuario_nss}_${alarma.nombre_medicamento}_${Date.now()}.jpg`;
-    
-            // Subir la imagen a S3
-            const uploadParams = {
-                Bucket: "salud-magenes",
-                Key: key,
-                Body: req.file.buffer,
-                ACL: "public-read",
-                ContentType: req.file.mimetype
-            };
-            await s3Client.send(new PutObjectCommand(uploadParams));
-    
-            // Generar la URL pública de la imagen
-            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
-    
-            // Actualizar la alarma en la base de datos
-            await db.execute(
-                `UPDATE alarmas 
-                 SET estado = 'Tomada', imagen_prueba = ?, descripcion = ? 
-                 WHERE id = ?`,
-                [
-                    imageUrl,
-                    `Foto tomada por ${alarma.nombre_usuario} a las ${alarma.hora_programada} para el medicamento ${alarma.nombre_medicamento}`,
-                    id
-                ]
-            );
-    
-            res.status(200).json({
-                message: "Alarma apagada con éxito. Foto registrada.",
-                url: imageUrl,
-                descripcion: `Foto tomada por ${alarma.nombre_usuario} a las ${alarma.hora_programada} para el medicamento ${alarma.nombre_medicamento}`
-            });
-        } catch (error) {
-            console.error("❌ Error al apagar la alarma:", error);
-            res.status(500).json({ error: "Error en el servidor al apagar la alarma." });
-        }
-    });
-    
-
+        res.status(200).json({
+            message: "Alarma apagada exitosamente.",
+            url: imageUrl
+        });
+    } catch (error) {
+        console.error("❌ Error al apagar alarma:", error);
+        res.status(500).json({ error: "Error al apagar la alarma." });
+    }
+});
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
 }
