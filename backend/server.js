@@ -464,8 +464,7 @@ router.patch("/alarmas/:id/apagar", async (req, res) => {
     }
 });
 
-
-// 📌 Endpoint para subir imagen y apagar la alarma
+// 📌 Endpoint para subir imagen y apagar alarma
 app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
     const { id, usuario_nss } = req.body;
 
@@ -474,8 +473,12 @@ app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
     }
 
     try {
+        // 🔹 Generar carpeta y nombre del archivo
+        const folder = `photos/${usuario_nss}`;
+        const fileName = `alarma_${id}_${Date.now()}.jpg`;
+        const key = `${folder}/${fileName}`;
+
         // 🔹 Subir imagen a DigitalOcean Spaces
-        const key = `photos/${usuario_nss}_${Date.now()}.jpg`;
         const uploadParams = {
             Bucket: "salud-magenes",
             Key: key,
