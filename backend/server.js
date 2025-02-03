@@ -465,6 +465,52 @@ router.patch("/alarmas/:id/apagar", async (req, res) => {
 });
 
 
+// 📌 Endpoint para subir imagen y apagar la alarma
+app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
+    const { id, usuario_nss } = req.body;
+
+    if (!req.file || !id || !usuario_nss) {
+        return res.status(400).json({ error: "Faltan datos: imagen, id de alarma y NSS son obligatorios." });
+    }
+
+    try {
+        // 🔹 Subir imagen a DigitalOcean Spaces
+        const key = `photos/${usuario_nss}_${Date.now()}.jpg`;
+        const uploadParams = {
+            Bucket: "salud-magenes",
+            Key: key,
+            Body: req.file.buffer,
+            ACL: "public-read",
+            ContentType: req.file.mimetype,
+        };
+
+        await s3Client.send(new PutObjectCommand(uploadParams));
+        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+        // 🔹 Actualizar la alarma en la base de datos
+        const [result] = await db.execute(
+            `UPDATE alarmas 
+             SET estado = 'Tomada', imagen_prueba = ? 
+             WHERE id = ?`,
+            [imageUrl, id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "No se encontró la alarma." });
+        }
+
+        res.status(200).json({
+            message: "Alarma apagada exitosamente.",
+            url: imageUrl,
+        });
+    } catch (error) {
+        console.error("❌ Error al apagar la alarma:", error);
+        res.status(500).json({ error: "Error al apagar la alarma." });
+    }
+});
+
+
+
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
 }
 
