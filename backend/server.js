@@ -384,56 +384,85 @@ app.get("/alarmas/:nss", async (req, res) => {
         res.status(500).json({ error: "Error al obtener alarmas." });
     }
 });
-// 📌 Endpoint para apagar la alarma con una imagen
- router.patch("/alarmas/:id", async (req, res) => {
-    const { id } = req.params;
-    const { usuario_nss, imagen_url } = req.body;
 
-    if (!usuario_nss || !imagen_url) {
-        return res.status(400).json({ error: "Faltan datos: usuario_nss e imagen_url son obligatorios." });
+
+router.post("/imagenes", upload.single("imagen"), async (req, res) => {
+    const { usuario_nss } = req.body;
+
+    if (!req.file || !usuario_nss) {
+        return res.status(400).json({ error: "Faltan datos: imagen y usuario_nss son obligatorios." });
     }
 
     try {
-        // 🔹 Buscar la alarma en la base de datos
-        const [alarma] = await db.execute(
-            `SELECT a.id, a.hora_programada, m.nombre_medicamento, u.nombre
-             FROM alarmas a
-             JOIN medicamentos m ON a.medicamento_id = m.id
-             JOIN usuarios u ON a.usuario_nss = u.nss
-             WHERE a.id = ? AND a.usuario_nss = ?`,
-            [id, usuario_nss]
-        );
+        // Generar nombre único para la imagen
+        const key = `photos/${usuario_nss}_${Date.now()}.jpg`;
 
-        // 🔹 Si no existe la alarma, devolver error
-        if (!alarma || alarma.length === 0) {
-            return res.status(404).json({ error: "No se encontró la alarma o ya fue tomada." });
-        }
+        // Configuración de la subida a Spaces
+        const uploadParams = {
+            Bucket: "salud-magenes",
+            Key: key,
+            Body: req.file.buffer,
+            ACL: "public-read",
+            ContentType: req.file.mimetype,
+        };
 
-        // 🔹 Actualizar la base de datos con la imagen
-        await db.execute(
-            `UPDATE alarmas 
-             SET estado = 'Tomada', 
-                 descripcion = ?, 
-                 imagen_prueba = ? 
-             WHERE id = ?`,
-            [
-                'Foto tomada por ${alarma[0].nombre} para el medicamento ${alarma[0].nombre_medicamento} a las ${alarma[0].hora_programada}',
-                imagen_url,
-                id
-            ]
-        );
+        // Subir la imagen a Spaces
+        await s3Client.send(new PutObjectCommand(uploadParams));
+
+        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
         res.status(200).json({
-            message: "Alarma apagada exitosamente.",
-            url: imagen_url
+            message: "Imagen subida exitosamente.",
+            url: imageUrl,
         });
-
     } catch (error) {
-        console.error("❌ Error al apagar alarma:", error);
-        res.status(500).json({ error: "Error interno al apagar la alarma." });
-    }
+        console.error("❌ Error al subir imagen:", error);
+        res.status(500).json({ error: "Error al subir la imagen a Spaces." });
+    }
 });
 
+router.patch("/alarmas/:id/apagar", async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // Actualizar el estado de la alarma como "Tomada"
+        const [result] = await db.execute(
+            "UPDATE alarmas SET estado = 'Tomada' WHERE id = ?",
+            [id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "No se encontró la alarma." });
+        }
+
+        res.status(200).json({ message: "Alarma apagada exitosamente." });
+    } catch (error) {
+        console.error("❌ Error al apagar la alarma:", error);
+        res.status(500).json({ error: "Error al apagar la alarma." });
+    }
+});
+
+
+router.patch("/alarmas/:id/apagar", async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // Actualizar el estado de la alarma como "Tomada"
+        const [result] = await db.execute(
+            'UPDATE alarmas SET estado = "Tomada" WHERE id = ?',
+            [id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "No se encontró la alarma." });
+        }
+
+        res.status(200).json({ message: "Alarma apagada exitosamente." });
+    } catch (error) {
+        console.error("❌ Error al apagar la alarma:", error);
+        res.status(500).json({ error: "Error al apagar la alarma." });
+    }
+});
 
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
