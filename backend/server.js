@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
+const router = express.Router();
 
 const certPath = "./ca-certificate.crt";
 
@@ -383,19 +384,17 @@ app.get("/alarmas/:nss", async (req, res) => {
         res.status(500).json({ error: "Error al obtener alarmas." });
     }
 });
-
-
- // 📌 Endpoint para apagar una alarma subiendo una foto
- app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
+// 📌 Endpoint para apagar la alarma con una imagen
+ router.patch("/alarmas/:id", async (req, res) => {
     const { id } = req.params;
-    const { usuario_nss } = req.body;
+    const { usuario_nss, imagen_url } = req.body;
 
-    if (!req.file) {
-        return res.status(400).json({ error: "Se requiere una imagen para apagar la alarma." });
+    if (!usuario_nss || !imagen_url) {
+        return res.status(400).json({ error: "Faltan datos: usuario_nss e imagen_url son obligatorios." });
     }
 
     try {
-        // 🔹 Buscar la alarma
+        // 🔹 Buscar la alarma en la base de datos
         const [alarma] = await db.execute(
             `SELECT a.id, a.hora_programada, m.nombre_medicamento, u.nombre
              FROM alarmas a
@@ -405,24 +404,10 @@ app.get("/alarmas/:nss", async (req, res) => {
             [id, usuario_nss]
         );
 
+        // 🔹 Si no existe la alarma, devolver error
         if (!alarma || alarma.length === 0) {
             return res.status(404).json({ error: "No se encontró la alarma o ya fue tomada." });
         }
-
-        // 🔹 Construir la clave de la imagen en Spaces
-        const key = `imagenes/alarmas/${usuario_nss}_${Date.now()}.jpg`;
-
-        // 🔹 Subir la imagen a DigitalOcean Spaces
-        await s3Client.send(new PutObjectCommand({
-            Bucket: "salud-magenes",
-            Key: key,
-            Body: req.file.buffer,
-            ACL: "public-read",
-            ContentType: req.file.mimetype
-        }));
-
-        // 🔹 Construir la URL de la imagen
-        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
         // 🔹 Actualizar la base de datos con la imagen
         await db.execute(
@@ -432,22 +417,23 @@ app.get("/alarmas/:nss", async (req, res) => {
                  imagen_prueba = ? 
              WHERE id = ?`,
             [
-                `Foto tomada por ${alarma[0].nombre} para el medicamento ${alarma[0].nombre_medicamento} a las ${alarma[0].hora_programada}`,
-                imageUrl,
+                'Foto tomada por ${alarma[0].nombre} para el medicamento ${alarma[0].nombre_medicamento} a las ${alarma[0].hora_programada}',
+                imagen_url,
                 id
             ]
         );
 
         res.status(200).json({
             message: "Alarma apagada exitosamente.",
-            url: imageUrl
+            url: imagen_url
         });
 
     } catch (error) {
         console.error("❌ Error al apagar alarma:", error);
-        res.status(500).json({ error: "Error interno al apagar la alarma." });
-    }
+        res.status(500).json({ error: "Error interno al apagar la alarma." });
+    }
 });
+
 
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
