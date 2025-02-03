@@ -36,7 +36,7 @@ async function iniciarServidor() {
         host: "db-mysql-app-salud-do-user-18905968-0.j.db.ondigitalocean.com",
         user: "doadmin",
         password: "AVNS_eC3dTdiST4fJ0_6la0r",
-        database: "salud_app_db2",
+        database: "salud_app_db",
         port: 25060,
         ssl: { ca: fs.readFileSync(certPath) },
         waitForConnections: true,
