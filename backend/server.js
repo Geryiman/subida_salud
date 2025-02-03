@@ -386,6 +386,28 @@ app.get("/alarmas/:nss", async (req, res) => {
 });
 
 
+// 📌 Endpoint para apagar una alarm que no se donde va a
+app.get("/alarmas/:nss", async (req, res) => {
+    try {
+      const { nss } = req.params;
+      const alarmas = await db.query("SELECT * FROM alarmas WHERE usuario_nss = ?", [nss]);
+  
+      const updatedAlarmas = alarmas.map((alarma) => {
+        const horaProgramada = new Date(alarma.hora_programada);
+        if (horaProgramada < Date.now()) {
+          // Reprogramar alarma para 5 minutos después
+          alarma.hora_programada = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        }
+        return alarma;
+      });
+  
+      res.status(200).json(updatedAlarmas);
+    } catch (error) {
+      console.error("Error al obtener alarmas:", error);
+      res.status(500).json({ error: "Error al obtener alarmas." });
+    }
+  });
+
 router.post("/imagenes", upload.single("imagen"), async (req, res) => {
     const { usuario_nss } = req.body;
 
@@ -511,6 +533,30 @@ app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
         res.status(500).json({ error: "Error al apagar la alarma." });
     }
 });
+
+app.post("/alarmas", async (req, res) => {
+    const { usuario_nss, nombre_medicamento, hora_programada } = req.body;
+  
+    if (!usuario_nss || !nombre_medicamento || !hora_programada) {
+      return res.status(400).json({ error: "Faltan campos obligatorios." });
+    }
+  
+    try {
+      const result = await db.execute(
+        "INSERT INTO alarmas (usuario_nss, nombre_medicamento, hora_programada) VALUES (?, ?, ?)",
+        [usuario_nss, nombre_medicamento, hora_programada]
+      );
+  
+      res.status(201).json({
+        message: "Alarma creada exitosamente.",
+        alarma: { id: result.insertId, usuario_nss, nombre_medicamento, hora_programada },
+      });
+    } catch (error) {
+      console.error("Error al crear alarma:", error);
+      res.status(500).json({ error: "Error al crear la alarma." });
+    }
+  });
+
 
 
 
