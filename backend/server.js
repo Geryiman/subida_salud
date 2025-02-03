@@ -307,7 +307,7 @@ async function iniciarServidor() {
     app.post("/tratamientos", async (req, res) => {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
     
-        // Verificar que los datos requeridos están presentes
+        // Validar que los datos requeridos están presentes
         if (!usuario_nss || !nombre_tratamiento || !descripcion || !Array.isArray(medicamentos)) {
             return res.status(400).json({ error: "Datos incompletos. Verifica el NSS, nombre del tratamiento, descripción y medicamentos." });
         }
@@ -328,26 +328,29 @@ async function iniciarServidor() {
             for (const med of medicamentos) {
                 const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
     
-                // Validar los datos del medicamento
                 if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
                     console.error("⚠ Medicamento con datos incompletos:", med);
                     continue;
                 }
     
-                // Intentar parsear la fecha de hora_inicio
+                // Validar y procesar hora_inicio
                 let horaInicio = new Date(hora_inicio);
                 if (isNaN(horaInicio.getTime())) {
                     console.warn("⚠ Formato de hora inválido, intentando corregir:", hora_inicio);
-                    // Reintentar con otros formatos posibles
                     horaInicio = new Date(hora_inicio.replace(" ", "T") + "Z");
                 }
-    
                 if (isNaN(horaInicio.getTime())) {
                     console.error("❌ No se pudo interpretar la hora_inicio:", hora_inicio);
                     continue;
                 }
-    
                 const formattedHoraInicio = horaInicio.toISOString().slice(0, 19).replace("T", " ");
+    
+                // Validar y procesar intervalo_horas
+                const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000; // Convertir a milisegundos
+                if (isNaN(intervaloMs) || intervaloMs <= 0) {
+                    console.error("⚠ Intervalo de tiempo inválido para medicamento:", intervalo_horas);
+                    continue;
+                }
     
                 // Guardar medicamento
                 const [medicamento] = await db.execute(
@@ -356,15 +359,8 @@ async function iniciarServidor() {
                 );
     
                 const medicamentoId = medicamento.insertId;
-                console.log("Medicamento guardado con ID:", medicamentoId);
     
                 // Generar alarmas
-                const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000; // Convertir horas a milisegundos
-                if (isNaN(intervaloMs) || intervaloMs <= 0) {
-                    console.error("⚠ Intervalo de tiempo inválido para medicamento:", intervalo_horas);
-                    continue;
-                }
-    
                 for (let i = 0; i < 5; i++) {
                     const horaAlarma = new Date(horaInicio.getTime() + i * intervaloMs);
                     const formattedHoraAlarma = horaAlarma.toISOString().slice(0, 19).replace("T", " ");
@@ -378,14 +374,12 @@ async function iniciarServidor() {
             }
     
             res.status(201).json({ message: "Tratamiento y medicamentos guardados exitosamente." });
-    
         } catch (error) {
             console.error("❌ Error al guardar tratamiento:", error);
             res.status(500).json({ error: "Error al guardar tratamiento. Intenta nuevamente." });
         }
     });
     
-
 
 // 📌 Endpoint para obtener tratamientos por usuario
 app.get("/tratamientos/:nss", async (req, res) => {
