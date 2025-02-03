@@ -5,7 +5,7 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const fs = require("fs");
 const axios = require("axios");
-const {S3Client, PutObjectCommand, DeleteObjectCommand} = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,7 +36,7 @@ async function iniciarServidor() {
         host: "db-mysql-app-salud-do-user-18905968-0.j.db.ondigitalocean.com",
         user: "doadmin",
         password: "AVNS_eC3dTdiST4fJ0_6la0r",
-        database: "salud_app_db",
+        database: "salud_app_db2",
         port: 25060,
         ssl: { ca: fs.readFileSync(certPath) },
         waitForConnections: true,
@@ -58,17 +58,17 @@ async function iniciarServidor() {
 
     app.post('/usuarios', async (req, res) => {
         const { nss, nombre, edad, sexo, contraseña } = req.body;
-    
+
         // Validación de campos
         if (!nss || !nombre || !edad || !sexo || !contraseña) {
             return res.status(400).json({ error: "Todos los campos son obligatorios." });
         }
-    
+
         // Validar que el NSS tenga exactamente 11 dígitos
         if (nss.length !== 11) {
             return res.status(400).json({ error: "El NSS debe tener exactamente 11 dígitos." });
         }
-    
+
         // Convertir "M" a "Masculino" y "F" a "Femenino"
         let sexoConvertido = sexo;
         if (sexo.toUpperCase() === "M") {
@@ -76,19 +76,19 @@ async function iniciarServidor() {
         } else if (sexo.toUpperCase() === "F") {
             sexoConvertido = "Femenino";
         }
-    
+
         // Validar que el sexo sea "Masculino", "Femenino" o "Otro"
         const valoresPermitidos = ["Masculino", "Femenino", "Otro"];
         if (!valoresPermitidos.includes(sexoConvertido)) {
             return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Masculino', 'Femenino' o 'Otro'." });
         }
-    
+
         try {
             // Insertar el usuario en la base de datos
             const query = "INSERT INTO usuarios (nss, nombre, edad, sexo, contraseña) VALUES (?, ?, ?, ?, ?)";
             const values = [nss, nombre, edad, sexoConvertido, contraseña];
             await db.execute(query, values);
-    
+
             res.status(201).json({ message: "Usuario registrado correctamente." });
         } catch (error) {
             console.error("❌ Error en el registro:", error);
@@ -98,20 +98,20 @@ async function iniciarServidor() {
 
     app.post('/login', async (req, res) => {
         const { nss, contraseña } = req.body;
-    
+
         // Validación de campos
         if (!nss || !contraseña) {
             return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
         }
-    
+
         try {
             // Verificar credenciales en la base de datos
             const [result] = await db.execute("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña]);
-    
+
             if (result.length === 0) {
                 return res.status(401).json({ error: "Credenciales inválidas." });
             }
-    
+
             const usuario = result[0];
             res.json({
                 message: "Inicio de sesión exitoso",
@@ -128,80 +128,80 @@ async function iniciarServidor() {
         }
     });
 
-    
+
     // 📌 Configuración de Multer para manejar archivos en memoria
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
- // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
-app.post("/perfil", upload.single("imagen"), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
+    // 📌 Endpoint para subir y actualizar la foto de perfil del usuario
+    app.post("/perfil", upload.single("imagen"), async (req, res) => {
+        try {
+            if (!req.file) return res.status(400).json({ error: "No se recibió un archivo." });
 
-        const { usuario_nss } = req.body;
-        if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
+            const { usuario_nss } = req.body;
+            if (!usuario_nss) return res.status(400).json({ error: "El usuario_nss es obligatorio." });
 
-        // 🔹 Definir la ruta de la imagen en DigitalOcean Spaces
-        const key = `usuario/${usuario_nss}/perfil.jpg`;
+            // 🔹 Definir la ruta de la imagen en DigitalOcean Spaces
+            const key = `usuario/${usuario_nss}/perfil.jpg`;
 
-        // 🔹 Buscar la imagen existente en la base de datos
-        const [existingImage] = await db.execute(
-            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-            [usuario_nss]
-        );
+            // 🔹 Buscar la imagen existente en la base de datos
+            const [existingImage] = await db.execute(
+                "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+                [usuario_nss]
+            );
 
-        if (existingImage.length > 0) {
-            const oldImageUrl = existingImage[0].url;
-            const keyToDelete = oldImageUrl.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1];
+            if (existingImage.length > 0) {
+                const oldImageUrl = existingImage[0].url;
+                const keyToDelete = oldImageUrl.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1];
 
-            // 🔹 Eliminar la imagen anterior de DigitalOcean Spaces
-            const deleteParams = {
-                Bucket: "salud-magenes",
-                Key: keyToDelete
-            };
+                // 🔹 Eliminar la imagen anterior de DigitalOcean Spaces
+                const deleteParams = {
+                    Bucket: "salud-magenes",
+                    Key: keyToDelete
+                };
 
-            try {
-                const deleteCommand = new DeleteObjectCommand(deleteParams);
-                await s3Client.send(deleteCommand);
-                console.log("✅ Imagen anterior eliminada:", keyToDelete);
-            } catch (deleteError) {
-                console.error("❌ Error al eliminar la imagen anterior:", deleteError);
+                try {
+                    const deleteCommand = new DeleteObjectCommand(deleteParams);
+                    await s3Client.send(deleteCommand);
+                    console.log("✅ Imagen anterior eliminada:", keyToDelete);
+                } catch (deleteError) {
+                    console.error("❌ Error al eliminar la imagen anterior:", deleteError);
+                }
+
+                // 🔹 Eliminar la imagen de la base de datos
+                await db.execute("DELETE FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [usuario_nss]);
             }
 
-            // 🔹 Eliminar la imagen de la base de datos
-            await db.execute("DELETE FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil'", [usuario_nss]);
+            // 🔹 Subir la nueva imagen a DigitalOcean Spaces
+            const uploadParams = {
+                Bucket: "salud-magenes",
+                Key: key,
+                Body: req.file.buffer,
+                ACL: "public-read",
+                ContentType: req.file.mimetype
+            };
+
+            const uploadCommand = new PutObjectCommand(uploadParams);
+            await s3Client.send(uploadCommand);
+
+            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+
+            // 🔹 Guardar la nueva foto en la base de datos
+            await db.execute(
+                "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'perfil', ?, 'Foto de perfil')",
+                [usuario_nss, imageUrl]
+            );
+
+            res.status(201).json({
+                message: "Foto de perfil actualizada con éxito.",
+                url: imageUrl
+            });
+
+        } catch (error) {
+            console.error("❌ Error al subir la foto de perfil:", error);
+            res.status(500).json({ error: "Error en el servidor al subir la imagen." });
         }
-
-        // 🔹 Subir la nueva imagen a DigitalOcean Spaces
-        const uploadParams = {
-            Bucket: "salud-magenes",
-            Key: key,
-            Body: req.file.buffer,
-            ACL: "public-read",
-            ContentType: req.file.mimetype
-        };
-
-        const uploadCommand = new PutObjectCommand(uploadParams);
-        await s3Client.send(uploadCommand);
-
-        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
-
-        // 🔹 Guardar la nueva foto en la base de datos
-        await db.execute(
-            "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'perfil', ?, 'Foto de perfil')",
-            [usuario_nss, imageUrl]
-        );
-
-        res.status(201).json({
-            message: "Foto de perfil actualizada con éxito.",
-            url: imageUrl
-        });
-
-    } catch (error) {
-        console.error("❌ Error al subir la foto de perfil:", error);
-        res.status(500).json({ error: "Error en el servidor al subir la imagen." });
-    }
-});
+    });
 
 
 
@@ -263,174 +263,258 @@ app.post("/perfil", upload.single("imagen"), async (req, res) => {
         }
     });
 
-  // 📌 Endpoint para obtener la información completa del usuario
-app.get("/usuario/:nss", async (req, res) => {
-    try {
-        const { nss } = req.params;
+    // 📌 Endpoint para obtener la información completa del usuario
+    app.get("/usuario/:nss", async (req, res) => {
+        try {
+            const { nss } = req.params;
 
-        // 🔹 Obtener datos del usuario
-        const [userResult] = await db.execute(
-            "SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?",
-            [nss]
-        );
-
-        if (userResult.length === 0) {
-            return res.status(404).json({ error: "Usuario no encontrado." });
-        }
-
-        // 🔹 Obtener la última foto de perfil
-        const [imageResult] = await db.execute(
-            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-            [nss]
-        );
-
-        // 🔹 Definir la URL de la imagen
-        const userImage = imageResult.length > 0
-            ? imageResult[0].url
-            : `https://salud-magenes.sfo2.digitaloceanspaces.com/usuario/${nss}/perfil.jpg`;
-
-        res.json({
-            nss,
-            nombre: userResult[0].nombre,
-            edad: userResult[0].edad,
-            sexo: userResult[0].sexo,
-            fotoPerfil: userImage,
-        });
-
-    } catch (error) {
-        console.error("❌ Error al obtener la información del usuario:", error);
-        res.status(500).json({ error: "Error en el servidor al obtener la información." });
-    }
-});
-app.post("/tratamientos", async (req, res) => {
-    try {
-        const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
-        if (!usuario_nss || !nombre_tratamiento || !descripcion || !medicamentos || medicamentos.length === 0) {
-            return res.status(400).json({ error: "Todos los campos son obligatorios y debe haber al menos un medicamento." });
-        }
-
-        const [tratamiento] = await db.execute(
-            "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
-            [usuario_nss, nombre_tratamiento, descripcion]
-        );
-
-        const tratamientoId = tratamiento.insertId;
-
-        for (const med of medicamentos) {
-            const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
-            if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
-                return res.status(400).json({ error: "Cada medicamento debe incluir nombre, dosis, hora de inicio e intervalo." });
-            }
-
-            const [medicamento] = await db.execute(
-                "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
-                [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
+            // 🔹 Obtener datos del usuario
+            const [userResult] = await db.execute(
+                "SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?",
+                [nss]
             );
 
-            const medicamentoId = medicamento.insertId;
+            if (userResult.length === 0) {
+                return res.status(404).json({ error: "Usuario no encontrado." });
+            }
 
-            let horaAlarma = new Date();
-            horaAlarma.setHours(...hora_inicio.split(":"));
-            horaAlarma.setMinutes(0);
-            horaAlarma.setSeconds(0);
+            // 🔹 Obtener la última foto de perfil
+            const [imageResult] = await db.execute(
+                "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+                [nss]
+            );
 
-            for (let i = 0; i < 5; i++) { 
-                horaAlarma.setHours(horaAlarma.getHours() + intervalo_horas);
-                await db.execute(
-                    "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
-                    [medicamentoId, usuario_nss, horaAlarma]
+            // 🔹 Definir la URL de la imagen
+            const userImage = imageResult.length > 0
+                ? imageResult[0].url
+                : `https://salud-magenes.sfo2.digitaloceanspaces.com/usuario/${nss}/perfil.jpg`;
+
+            res.json({
+                nss,
+                nombre: userResult[0].nombre,
+                edad: userResult[0].edad,
+                sexo: userResult[0].sexo,
+                fotoPerfil: userImage,
+            });
+
+        } catch (error) {
+            console.error("❌ Error al obtener la información del usuario:", error);
+            res.status(500).json({ error: "Error en el servidor al obtener la información." });
+        }
+    });
+    // 📌 Endpoint para registrar tratamientos y generar alarmas dinámicamente
+    app.post("/tratamientos", async (req, res) => {
+        try {
+            const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
+            if (!usuario_nss || !nombre_tratamiento || !descripcion || !medicamentos || medicamentos.length === 0) {
+                return res.status(400).json({ error: "Todos los campos son obligatorios y debe haber al menos un medicamento." });
+            }
+
+            // Crear tratamiento
+            const [tratamiento] = await db.execute(
+                "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
+                [usuario_nss, nombre_tratamiento, descripcion]
+            );
+
+            const tratamientoId = tratamiento.insertId;
+
+            for (const med of medicamentos) {
+                const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
+                if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
+                    return res.status(400).json({ error: "Cada medicamento debe incluir nombre, dosis, hora de inicio e intervalo." });
+                }
+
+                const [medicamento] = await db.execute(
+                    "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
+                    [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
                 );
+
+                const medicamentoId = medicamento.insertId;
+                const horaInicio = new Date(hora_inicio);
+
+                // Generar alarmas solo para el próximo día
+                for (let i = 0; i < 8; i++) {
+                    const horaAlarma = new Date(horaInicio.getTime() + i * intervalo_horas * 60 * 60 * 1000);
+                    if (horaAlarma > new Date()) {
+                        await db.execute(
+                            "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                            [medicamentoId, usuario_nss, horaAlarma]
+                        );
+                    }
+                }
             }
+
+            res.status(201).json({ message: "Tratamiento y alarmas generados con éxito." });
+        } catch (error) {
+            console.error("❌ Error al registrar tratamiento:", error);
+            res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
         }
+    });
 
-        res.status(201).json({ message: "Tratamiento, medicamentos y alarmas generados con éxito." });
-    } catch (error) {
-        console.error("❌ Error al registrar tratamiento:", error);
-        res.status(500).json({ error: "Error en el servidor al registrar tratamiento." });
-    }
-});
-app.get("/tratamientos/:nss", async (req, res) => {
-    try {
-        const { nss } = req.params;
-        const [tratamientos] = await db.execute(
-            "SELECT * FROM tratamientos WHERE usuario_nss = ?",
-            [nss]
-        );
+    // 📌 Endpoint para obtener las próximas alarmas sin duplicados
+    app.get("/alarmas/:nss", async (req, res) => {
+        try {
+            const { nss } = req.params;
 
-        if (tratamientos.length === 0) {
-            return res.status(404).json({ error: "No se encontraron tratamientos para este usuario." });
-        }
-
-        for (let tratamiento of tratamientos) {
-            const [medicamentos] = await db.execute(
-                "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
-                [tratamiento.id]
+            const [alarmas] = await db.execute(
+                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
+                 FROM alarmas a
+                 JOIN medicamentos m ON a.medicamento_id = m.id
+                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+                 ORDER BY a.hora_programada ASC`,
+                [nss]
             );
-            tratamiento.medicamentos = medicamentos;
+
+            if (alarmas.length === 0) {
+                return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
+            }
+
+            // Filtrar para eliminar duplicados de medicamentos, dejando solo la próxima alarma por medicamento
+            const uniqueAlarms = alarmas.reduce((acc, alarm) => {
+                if (!acc.some((a) => a.nombre_medicamento === alarm.nombre_medicamento)) {
+                    acc.push(alarm);
+                }
+                return acc;
+            }, []);
+
+            res.json(uniqueAlarms);
+        } catch (error) {
+            console.error("❌ Error al obtener alarmas:", error);
+            res.status(500).json({ error: "Error en el servidor al obtener alarmas." });
         }
+    });
+    app.get("/alarmas/:nss", async (req, res) => {
+        try {
+            const { nss } = req.params;
 
-        res.json(tratamientos);
-    } catch (error) {
-        console.error("❌ Error al obtener tratamientos:", error);
-        res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
-    }
-});
-app.get("/alarmas/:nss", async (req, res) => {
-    try {
-        const { nss } = req.params;
+            // Obtener alarmas pendientes ordenadas por hora programada
+            const [alarmas] = await db.execute(
+                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
+                 FROM alarmas a
+                 JOIN medicamentos m ON a.medicamento_id = m.id
+                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+                 ORDER BY a.hora_programada ASC`,
+                [nss]
+            );
 
-        const [alarmas] = await db.execute(
-            `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento 
-             FROM alarmas a 
-             JOIN medicamentos m ON a.medicamento_id = m.id 
-             WHERE a.usuario_nss = ? 
-             ORDER BY a.hora_programada ASC`,
-            [nss]
-        );
+            if (alarmas.length === 0) {
+                return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
+            }
 
-        if (alarmas.length === 0) {
-            return res.status(404).json({ error: "No se encontraron alarmas para este usuario." });
+            // Filtrar duplicados: solo dejar una alarma por medicamento
+            const uniqueAlarms = alarmas.reduce((acc, alarm) => {
+                if (!acc.some((a) => a.nombre_medicamento === alarm.nombre_medicamento)) {
+                    acc.push(alarm);
+                }
+                return acc;
+            }, []);
+
+            res.json(uniqueAlarms);
+        } catch (error) {
+            console.error("❌ Error al obtener alarmas:", error);
+            res.status(500).json({ error: "Error en el servidor al obtener alarmas." });
         }
+    });
 
-        res.json(alarmas);
-    } catch (error) {
-        console.error("❌ Error al obtener alarmas:", error);
-        res.status(500).json({ error: "Error en el servidor al obtener las alarmas." });
-    }
-});
-app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { usuario_nss } = req.body;
-        if (!req.file) return res.status(400).json({ error: "No se recibió una imagen." });
+    app.get("/tratamientos/:nss", async (req, res) => {
+        try {
+            const { nss } = req.params;
 
-        const key = `imagenes/alarmas/${usuario_nss}_${Date.now()}.jpg`;
-        const uploadParams = {
-            Bucket: "salud-magenes",
-            Key: key,
-            Body: req.file.buffer,
-            ACL: "public-read",
-            ContentType: req.file.mimetype
-        };
-        await s3Client.send(new PutObjectCommand(uploadParams));
+            // Obtener tratamientos del usuario
+            const [tratamientos] = await db.execute(
+                `SELECT id, nombre_tratamiento, descripcion 
+                 FROM tratamientos 
+                 WHERE usuario_nss = ?`,
+                [nss]
+            );
 
-        const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+            if (tratamientos.length === 0) {
+                return res.status(404).json({ error: "No se encontraron tratamientos para este usuario." });
+            }
 
-        await db.execute(
-            "UPDATE alarmas SET estado = 'Tomada', imagen_prueba = ? WHERE id = ?",
-            [imageUrl, id]
-        );
+            // Obtener medicamentos para cada tratamiento y agregar alarmas
+            for (let tratamiento of tratamientos) {
+                const [medicamentos] = await db.execute(
+                    `SELECT m.id AS medicamento_id, m.nombre_medicamento, m.dosis, m.hora_inicio, m.intervalo_horas, 
+                            (SELECT COUNT(*) FROM alarmas WHERE medicamento_id = m.id AND estado = 'Pendiente') AS alarmas_pendientes
+                     FROM medicamentos m
+                     WHERE m.tratamiento_id = ?`,
+                    [tratamiento.id]
+                );
+                tratamiento.medicamentos = medicamentos;
+            }
 
-        res.status(200).json({
-            message: "Alarma actualizada con éxito y foto subida.",
-            url: imageUrl
-        });
-    } catch (error) {
-        console.error("❌ Error al actualizar la alarma:", error);
-        res.status(500).json({ error: "Error en el servidor al actualizar la alarma." });
-    }
-});
-
+            res.json(tratamientos);
+        } catch (error) {
+            console.error("❌ Error al obtener tratamientos:", error);
+            res.status(500).json({ error: "Error en el servidor al obtener tratamientos." });
+        }
+    });
+    app.patch("/alarmas/:id", upload.single("imagen"), async (req, res) => {
+        try {
+            const { id } = req.params; // ID de la alarma
+            const { usuario_nss } = req.body;
+    
+            // Validar que se haya recibido una imagen
+            if (!req.file) {
+                return res.status(400).json({ error: "Se requiere una imagen para apagar la alarma." });
+            }
+    
+            // Obtener información de la alarma, incluyendo el medicamento y la hora programada
+            const [alarmas] = await db.execute(
+                `SELECT a.id, a.hora_programada, m.nombre_medicamento, u.nombre AS nombre_usuario
+                 FROM alarmas a
+                 JOIN medicamentos m ON a.medicamento_id = m.id
+                 JOIN usuarios u ON a.usuario_nss = u.nss
+                 WHERE a.id = ? AND a.usuario_nss = ? AND a.estado = 'Pendiente'`,
+                [id, usuario_nss]
+            );
+    
+            if (alarmas.length === 0) {
+                return res.status(404).json({ error: "No se encontró la alarma o ya fue apagada." });
+            }
+    
+            const alarma = alarmas[0];
+    
+            // Crear un nombre único para la imagen
+            const key = `imagenes/alarmas/${usuario_nss}_${alarma.nombre_medicamento}_${Date.now()}.jpg`;
+    
+            // Subir la imagen a S3
+            const uploadParams = {
+                Bucket: "salud-magenes",
+                Key: key,
+                Body: req.file.buffer,
+                ACL: "public-read",
+                ContentType: req.file.mimetype
+            };
+            await s3Client.send(new PutObjectCommand(uploadParams));
+    
+            // Generar la URL pública de la imagen
+            const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
+    
+            // Actualizar la alarma en la base de datos
+            await db.execute(
+                `UPDATE alarmas 
+                 SET estado = 'Tomada', imagen_prueba = ?, descripcion = ? 
+                 WHERE id = ?`,
+                [
+                    imageUrl,
+                    `Foto tomada por ${alarma.nombre_usuario} a las ${alarma.hora_programada} para el medicamento ${alarma.nombre_medicamento}`,
+                    id
+                ]
+            );
+    
+            res.status(200).json({
+                message: "Alarma apagada con éxito. Foto registrada.",
+                url: imageUrl,
+                descripcion: `Foto tomada por ${alarma.nombre_usuario} a las ${alarma.hora_programada} para el medicamento ${alarma.nombre_medicamento}`
+            });
+        } catch (error) {
+            console.error("❌ Error al apagar la alarma:", error);
+            res.status(500).json({ error: "Error en el servidor al apagar la alarma." });
+        }
+    });
+    
 
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
