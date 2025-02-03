@@ -322,7 +322,7 @@ app.post("/tratamientos", async (req, res) => {
             // Validar que hora_inicio tenga el formato correcto
             let horaInicio = new Date(hora_inicio);
             if (isNaN(horaInicio.getTime())) {
-                console.error(⚠ Formato de hora inválido para ${nombre_medicamento}: ${hora_inicio});
+                console.error('⚠ Formato de hora inválido para ${nombre_medicamento}: ${hora_inicio}');
                 return res.status(400).json({ error: "Formato de hora inválido." });
             }
 
@@ -339,7 +339,7 @@ app.post("/tratamientos", async (req, res) => {
             // Validar intervalo de horas
             const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000; // Convertir horas a milisegundos
             if (isNaN(intervaloMs) || intervaloMs <= 0) {
-                console.error(⚠ Intervalo de tiempo inválido: ${intervalo_horas} horas);
+                console.error('⚠ Intervalo de tiempo inválido: ${intervalo_horas} horas');
                 return res.status(400).json({ error: "Intervalo de tiempo inválido." });
             }
 
