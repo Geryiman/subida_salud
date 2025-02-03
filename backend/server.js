@@ -533,7 +533,6 @@ app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
         res.status(500).json({ error: "Error al apagar la alarma." });
     }
 });
-
 app.post("/alarmas", async (req, res) => {
     const { usuario_nss, nombre_medicamento, hora_programada } = req.body;
   
@@ -542,20 +541,30 @@ app.post("/alarmas", async (req, res) => {
     }
   
     try {
-      const result = await db.execute(
-        "INSERT INTO alarmas (usuario_nss, nombre_medicamento, hora_programada) VALUES (?, ?, ?)",
-        [usuario_nss, nombre_medicamento, hora_programada]
-      );
+        // 🔹 Validar y convertir `hora_programada`
+        const horaValida = new Date(hora_programada);
+        if (isNaN(horaValida.getTime())) {
+            return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
+        }
+
+        const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // `YYYY-MM-DD HH:mm:ss`
+
+        // 🔹 Guardar en la base de datos
+        const result = await db.execute(
+            "INSERT INTO alarmas (usuario_nss, nombre_medicamento, hora_programada) VALUES (?, ?, ?)",
+            [usuario_nss, nombre_medicamento, horaFormateada]
+        );
   
-      res.status(201).json({
-        message: "Alarma creada exitosamente.",
-        alarma: { id: result.insertId, usuario_nss, nombre_medicamento, hora_programada },
-      });
+        res.status(201).json({
+            message: "Alarma creada exitosamente.",
+            alarma: { id: result.insertId, usuario_nss, nombre_medicamento, hora_programada: horaFormateada },
+        });
     } catch (error) {
-      console.error("Error al crear alarma:", error);
-      res.status(500).json({ error: "Error al crear la alarma." });
+        console.error("Error al crear alarma:", error);
+        res.status(500).json({ error: "Error al crear la alarma." });
     }
-  });
+});
+
 
 
 
