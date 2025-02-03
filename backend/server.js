@@ -9,6 +9,7 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/cl
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const moment = require("moment-timezone");
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -307,7 +308,6 @@ async function iniciarServidor() {
     app.post("/tratamientos", async (req, res) => {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
     
-        // Validar que los datos requeridos están presentes
         if (!usuario_nss || !nombre_tratamiento || !descripcion || !Array.isArray(medicamentos)) {
             return res.status(400).json({ error: "Datos incompletos. Verifica el NSS, nombre del tratamiento, descripción y medicamentos." });
         }
@@ -315,7 +315,6 @@ async function iniciarServidor() {
         try {
             console.log("Datos recibidos en el backend:", { usuario_nss, nombre_tratamiento, descripcion, medicamentos });
     
-            // Guardar el tratamiento
             const [tratamiento] = await db.execute(
                 "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
                 [usuario_nss, nombre_tratamiento, descripcion]
@@ -324,7 +323,6 @@ async function iniciarServidor() {
             const tratamientoId = tratamiento.insertId;
             console.log("Tratamiento guardado con ID:", tratamientoId);
     
-            // Procesar medicamentos
             for (const med of medicamentos) {
                 const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
     
@@ -333,26 +331,24 @@ async function iniciarServidor() {
                     continue;
                 }
     
-                // Validar y procesar hora_inicio
-                let horaInicio = new Date(hora_inicio);
-                if (isNaN(horaInicio.getTime())) {
-                    console.warn("⚠ Formato de hora inválido, intentando corregir:", hora_inicio);
-                    horaInicio = new Date(hora_inicio.replace(" ", "T") + "Z");
+                // Convertir hora_inicio a la zona horaria de México
+                let horaInicio = null;
+    
+                if (/^\d{2}:\d{2}:\d{2}$/.test(hora_inicio)) {
+                    // Si solo tenemos HH:mm:ss, añadimos la fecha actual
+                    const currentDate = moment().tz("America/Mexico_City").format("YYYY-MM-DD");
+                    horaInicio = moment.tz(`${currentDate} ${hora_inicio}`, "America/Mexico_City").toDate();
+                } else {
+                    horaInicio = moment.tz(hora_inicio, "America/Mexico_City").toDate();
                 }
+    
                 if (isNaN(horaInicio.getTime())) {
                     console.error("❌ No se pudo interpretar la hora_inicio:", hora_inicio);
                     continue;
                 }
-                const formattedHoraInicio = horaInicio.toISOString().slice(0, 19).replace("T", " ");
     
-                // Validar y procesar intervalo_horas
-                const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000; // Convertir a milisegundos
-                if (isNaN(intervaloMs) || intervaloMs <= 0) {
-                    console.error("⚠ Intervalo de tiempo inválido para medicamento:", intervalo_horas);
-                    continue;
-                }
+                const formattedHoraInicio = moment(horaInicio).tz("America/Mexico_City").format("YYYY-MM-DD HH:mm:ss");
     
-                // Guardar medicamento
                 const [medicamento] = await db.execute(
                     "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
                     [tratamientoId, nombre_medicamento, dosis, formattedHoraInicio, parseFloat(intervalo_horas)]
@@ -361,9 +357,10 @@ async function iniciarServidor() {
                 const medicamentoId = medicamento.insertId;
     
                 // Generar alarmas
+                const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000;
                 for (let i = 0; i < 5; i++) {
                     const horaAlarma = new Date(horaInicio.getTime() + i * intervaloMs);
-                    const formattedHoraAlarma = horaAlarma.toISOString().slice(0, 19).replace("T", " ");
+                    const formattedHoraAlarma = moment(horaAlarma).tz("America/Mexico_City").format("YYYY-MM-DD HH:mm:ss");
     
                     await db.execute(
                         "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada) VALUES (?, ?, ?)",
@@ -374,6 +371,7 @@ async function iniciarServidor() {
             }
     
             res.status(201).json({ message: "Tratamiento y medicamentos guardados exitosamente." });
+    
         } catch (error) {
             console.error("❌ Error al guardar tratamiento:", error);
             res.status(500).json({ error: "Error al guardar tratamiento. Intenta nuevamente." });
