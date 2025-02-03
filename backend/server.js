@@ -307,6 +307,7 @@ async function iniciarServidor() {
 // 📌 Endpoint para registrar tratamientos
 app.post("/tratamientos", async (req, res) => {
     const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
+
     try {
         const [tratamiento] = await db.execute(
             "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
@@ -317,29 +318,51 @@ app.post("/tratamientos", async (req, res) => {
 
         for (const med of medicamentos) {
             const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
+
+            // Validar que hora_inicio tenga el formato correcto
+            let horaInicio = new Date(hora_inicio);
+            if (isNaN(horaInicio.getTime())) {
+                console.error(⚠ Formato de hora inválido para ${nombre_medicamento}: ${hora_inicio});
+                return res.status(400).json({ error: "Formato de hora inválido." });
+            }
+
+            // Convertir la fecha a formato MySQL (YYYY-MM-DD HH:mm:ss)
+            const formattedHoraInicio = horaInicio.toISOString().slice(0, 19).replace("T", " ");
+
             const [medicamento] = await db.execute(
                 "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
-                [tratamientoId, nombre_medicamento, dosis, hora_inicio, intervalo_horas]
+                [tratamientoId, nombre_medicamento, dosis, formattedHoraInicio, parseFloat(intervalo_horas)]
             );
 
             const medicamentoId = medicamento.insertId;
-            const horaInicio = new Date(`1970-01-01T${hora_inicio}Z`);
 
+            // Validar intervalo de horas
+            const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000; // Convertir horas a milisegundos
+            if (isNaN(intervaloMs) || intervaloMs <= 0) {
+                console.error(⚠ Intervalo de tiempo inválido: ${intervalo_horas} horas);
+                return res.status(400).json({ error: "Intervalo de tiempo inválido." });
+            }
+
+            // Generar 5 alarmas a partir de la hora de inicio
             for (let i = 0; i < 5; i++) {
-                const horaAlarma = new Date(horaInicio.getTime() + i * intervalo_horas * 60 * 60 * 1000);
+                const horaAlarma = new Date(horaInicio.getTime() + i * intervaloMs);
+                const formattedHoraAlarma = horaAlarma.toISOString().slice(0, 19).replace("T", " ");
+
                 await db.execute(
                     "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada) VALUES (?, ?, ?)",
-                    [medicamentoId, usuario_nss, horaAlarma]
+                    [medicamentoId, usuario_nss, formattedHoraAlarma]
                 );
             }
         }
 
         res.status(201).json({ message: "Tratamiento y alarmas generados exitosamente." });
+
     } catch (error) {
         console.error("❌ Error al registrar tratamiento:", error);
-        res.status(500).json({ error: "Error al registrar tratamiento." });
-    }
+        res.status(500).json({ error: "Error al registrar tratamiento." });
+    }
 });
+
 
 // 📌 Endpoint para obtener tratamientos por usuario
 app.get("/tratamientos/:nss", async (req, res) => {
