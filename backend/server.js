@@ -7,6 +7,10 @@ const fs = require("fs");
 const axios = require("axios");
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { enviarNotificacionExpo } = require("./expo-notifications");
+const cron = require("node-cron");
+
+let db;
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -618,7 +622,83 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor." });
         }
     });
+
+    cron.schedule("* * * * *", async () => {
+        console.log("⏰ Verificando alarmas pendientes...");
     
+        try {
+            const ahora = new Date().toISOString().slice(0, 19).replace("T", " ");
+            const [alarmasPendientes] = await db.execute(
+                `SELECT a.id, a.usuario_nss, a.hora_programada, m.nombre_medicamento, u.token_expo
+                 FROM alarmas a
+                 JOIN usuarios u ON a.usuario_nss = u.nss
+                 JOIN medicamentos m ON a.medicamento_id = m.id
+                 WHERE a.estado = 'Pendiente' AND a.hora_programada <= ?`,
+                [ahora]
+            );
+    
+            for (const alarma of alarmasPendientes) {
+                const { id, usuario_nss, hora_programada, nombre_medicamento, token_expo } = alarma;
+    
+                if (!token_expo) {
+                    console.log(`⚠ Usuario ${usuario_nss} no tiene token Expo registrado.`);
+                    continue;
+                }
+    
+                try {
+                    await enviarNotificacionExpo(
+                        token_expo,
+                        "⏰ ¡Es hora de tu medicamento!",
+                        `Toma tu medicamento: ${nombre_medicamento}. Programado para las ${hora_programada}`,
+                        { screen: "ActiveAlarmScreen", medicamento_id: id }
+                    );
+                    console.log(`✅ Notificación enviada para la alarma ${id}, usuario ${usuario_nss}.`);
+                } catch (notiError) {
+                    console.error(`❌ Error al enviar notificación para usuario ${usuario_nss}:`, notiError);
+                }
+            }
+    
+            if (alarmasPendientes.length === 0) {
+                console.log("✅ No hay alarmas pendientes en este momento.");
+            }
+        } catch (error) {
+            console.error("❌ Error al verificar o enviar notificaciones:", error);
+        }
+    });
+    
+    
+    
+async function enviarNotificacionExpo(token, title, body, data = {}) {
+    const message = {
+        to: token,
+        sound: "default",
+        title,
+        body,
+        data,
+    };
+
+    try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(message),
+        });
+
+        const result = await response.json();
+        console.log("📢 Notificación enviada:", result);
+
+        if (result?.data?.errors && result.data.errors[0]?.details?.error === "DeviceNotRegistered") {
+            console.log(`⚠ Eliminando token inválido: ${token}`);
+            await db.execute("UPDATE usuarios SET token_expo = NULL WHERE token_expo = ?", [token]);
+        }
+        
+    } catch (error) {
+        console.error("❌ Error al enviar notificación:", error);
+    }
+}
 
 
 
@@ -627,3 +707,4 @@ async function iniciarServidor() {
 }
 
 iniciarServidor();
+
