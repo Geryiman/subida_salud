@@ -447,55 +447,6 @@ async function iniciarServidor() {
     }
 });
 
-app.post("/alarmas", async (req, res) => {
-    const { nss, nombre_medicamento, hora_programada } = req.body;
-
-    if (!nss || !nombre_medicamento || !hora_programada) {
-        return res.status(400).json({ error: "Faltan campos obligatorios." });
-    }
-
-    try {
-        // Validar que la hora programada sea válida
-        const horaValida = new Date(hora_programada);
-        if (isNaN(horaValida.getTime())) {
-            return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
-        }
-
-        const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // Formato `YYYY-MM-DD HH:mm:ss`
-
-        // Validar que el usuario con el NSS existe
-        const [usuario] = await db.execute(
-            "SELECT id FROM usuarios WHERE nss = ?",
-            [nss]
-        );
-
-        if (usuario.length === 0) {
-            return res.status(404).json({ error: "Usuario no encontrado." });
-        }
-
-        const usuarioId = usuario[0].id; // Obtener el ID del usuario
-
-        // Guardar la alarma en la base de datos
-        const [result] = await db.execute(
-            "INSERT INTO alarmas (id_usuario, nombre_medicamento, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
-            [usuarioId, nombre_medicamento, horaFormateada]
-        );
-
-        res.status(201).json({
-            message: "Alarma creada exitosamente.",
-            alarma: {
-                id: result.insertId,
-                nss,
-                nombre_medicamento,
-                hora_programada: horaFormateada,
-            },
-        });
-    } catch (error) {
-        console.error("❌ Error al crear alarma:", error);
-        res.status(500).json({ error: "Error al crear la alarma." });
-    }
-});
-
     router.post("/imagenes", upload.single("imagen"), async (req, res) => {
         const { usuario_nss } = req.body;
 
