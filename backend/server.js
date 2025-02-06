@@ -403,7 +403,6 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error al obtener tratamientos." });
         }
     });
-    const { enviarNotificacionExpo } = require("./expo-notifications");
 
     // 📌 Endpoint unificado para crear, obtener y reprogramar alarmas
     app.post("/alarmas", async (req, res) => {
@@ -590,7 +589,7 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error al apagar la alarma." });
         }
     });
-    const { enviarNotificacionExpo } = require("./expo-notifications");
+
 
     app.post("/alarmas", async (req, res) => {
         const { usuario_nss, nombre_medicamento, hora_programada } = req.body;
