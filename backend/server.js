@@ -416,7 +416,7 @@ async function iniciarServidor() {
         const [alarmas] = await db.execute(
             `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
              FROM alarmas a
-             JOIN medicamentos m ON a.id_medicamento = m.id
+             JOIN medicamentos m ON a.medicamento_id = m.id
              WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
              ORDER BY a.hora_programada ASC`,
             [nss]
