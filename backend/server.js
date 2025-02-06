@@ -404,88 +404,98 @@ async function iniciarServidor() {
         }
     });
 
-    // 📌 Endpoint unificado para crear, obtener y reprogramar alarmas
-    app.post("/alarmas", async (req, res) => {
-        const { usuario_nss, nombre_medicamento, hora_programada } = req.body;
-    
-        if (!usuario_nss || !nombre_medicamento || !hora_programada) {
-            return res.status(400).json({ error: "Faltan campos obligatorios." });
-        }
-    
-        try {
-            const horaValida = new Date(hora_programada);
-            if (isNaN(horaValida.getTime())) {
-                return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
-            }
-    
-            const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // `YYYY-MM-DD HH:mm:ss`
-    
-            // Guardar la alarma en la base de datos
-            const [result] = await db.execute(
-                "INSERT INTO alarmas (usuario_nss, nombre_medicamento, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
-                [usuario_nss, nombre_medicamento, horaFormateada]
-            );
-    
-            // Obtener todas las alarmas pendientes del usuario
-            const [alarmas] = await db.execute(
-                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
-                 FROM alarmas a
-                 LEFT JOIN medicamentos m ON a.id_medicamento = m.id
-                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
-                 ORDER BY a.hora_programada ASC`,
-                [usuario_nss]
-            );
-    
-            const ahora = new Date();
-            const alarmasActualizadas = [];
-    
-            for (const alarma of alarmas) {
-                const horaProgramada = new Date(alarma.hora_programada);
-    
-                if (horaProgramada < ahora) {
-                    // Reprogramar alarma para 5 minutos después
-                    const nuevaHora = new Date(ahora.getTime() + 5 * 60 * 1000);
-                    alarma.hora_programada = nuevaHora.toISOString().slice(0, 19).replace("T", " ");
-    
-                    // Actualizar la base de datos con la nueva hora
-                    await db.execute(
-                        "UPDATE alarmas SET hora_programada = ? WHERE id = ?",
-                        [alarma.hora_programada, alarma.id]
-                    );
-                }
-    
-                alarmasActualizadas.push(alarma);
-            }
-    
-            // Obtener el token Expo del usuario
-            const [tokenResult] = await db.execute(
-                "SELECT token_expo FROM usuarios WHERE nss = ?",
-                [usuario_nss]
-            );
-    
-            if (tokenResult.length > 0 && tokenResult[0].token_expo) {
-                const tokenExpo = tokenResult[0].token_expo;
-    
-                // Enviar notificación push
-                await enviarNotificacionExpo(
-                    tokenExpo,
-                    "⏰ ¡Es hora de tu medicamento!",
-                    `Toma: ${nombre_medicamento}`
+ app.get("/alarmas/:nss", async (req, res) => {
+    const { nss } = req.params;
+
+    try {
+        // Obtener las alarmas del usuario que están pendientes
+        const [alarmas] = await db.execute(
+            `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
+             FROM alarmas a
+             JOIN medicamentos m ON a.id_medicamento = m.id
+             WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+             ORDER BY a.hora_programada ASC`,
+            [nss]
+        );
+
+        // Verificar si alguna alarma ya pasó su hora programada
+        const ahora = new Date();
+        const alarmasActualizadas = [];
+
+        for (const alarma of alarmas) {
+            const horaProgramada = new Date(alarma.hora_programada);
+
+            if (horaProgramada < ahora) {
+                // Reprogramar alarma para 5 minutos después
+                const nuevaHora = new Date(ahora.getTime() + 5 * 60 * 1000);
+                alarma.hora_programada = nuevaHora.toISOString().slice(0, 19).replace("T", " ");
+
+                // Actualizar la base de datos con la nueva hora
+                await db.execute(
+                    "UPDATE alarmas SET hora_programada = ? WHERE id = ?",
+                    [alarma.hora_programada, alarma.id]
                 );
-            } else {
-                console.log(`⚠ Usuario ${usuario_nss} no tiene token Expo registrado.`);
             }
-    
-            res.status(201).json({
-                message: "Alarma creada, procesada y notificada (si aplica).",
-                alarmas: alarmasActualizadas,
-            });
-        } catch (error) {
-            console.error("❌ Error al crear o procesar alarmas:", error);
-            res.status(500).json({ error: "Error en el servidor al manejar alarmas." });
+
+            alarmasActualizadas.push(alarma);
         }
-    });
-    
+
+        res.status(200).json(alarmasActualizadas);
+    } catch (error) {
+        console.error("❌ Error al obtener alarmas:", error);
+        res.status(500).json({ error: "Error al obtener alarmas." });
+    }
+});
+
+app.post("/alarmas", async (req, res) => {
+    const { nss, nombre_medicamento, hora_programada } = req.body;
+
+    if (!nss || !nombre_medicamento || !hora_programada) {
+        return res.status(400).json({ error: "Faltan campos obligatorios." });
+    }
+
+    try {
+        // Validar que la hora programada sea válida
+        const horaValida = new Date(hora_programada);
+        if (isNaN(horaValida.getTime())) {
+            return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
+        }
+
+        const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // Formato `YYYY-MM-DD HH:mm:ss`
+
+        // Validar que el usuario con el NSS existe
+        const [usuario] = await db.execute(
+            "SELECT id FROM usuarios WHERE nss = ?",
+            [nss]
+        );
+
+        if (usuario.length === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        const usuarioId = usuario[0].id; // Obtener el ID del usuario
+
+        // Guardar la alarma en la base de datos
+        const [result] = await db.execute(
+            "INSERT INTO alarmas (id_usuario, nombre_medicamento, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+            [usuarioId, nombre_medicamento, horaFormateada]
+        );
+
+        res.status(201).json({
+            message: "Alarma creada exitosamente.",
+            alarma: {
+                id: result.insertId,
+                nss,
+                nombre_medicamento,
+                hora_programada: horaFormateada,
+            },
+        });
+    } catch (error) {
+        console.error("❌ Error al crear alarma:", error);
+        res.status(500).json({ error: "Error al crear la alarma." });
+    }
+});
+
     router.post("/imagenes", upload.single("imagen"), async (req, res) => {
         const { usuario_nss } = req.body;
 
