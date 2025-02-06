@@ -553,56 +553,46 @@ async function iniciarServidor() {
 
 
     app.post("/alarmas", async (req, res) => {
-        const { usuario_nss, nombre_medicamento, hora_programada } = req.body;
+        const { medicamento_id, usuario_nss, hora_programada } = req.body;
     
-        if (!usuario_nss || !nombre_medicamento || !hora_programada) {
-            return res.status(400).json({ error: "Faltan campos obligatorios." });
+        // Validar que todos los campos obligatorios estén presentes
+        if (!medicamento_id || !usuario_nss || !hora_programada) {
+            return res.status(400).json({ 
+                error: "Faltan campos obligatorios: 'medicamento_id', 'usuario_nss', y 'hora_programada' son necesarios." 
+            });
         }
     
         try {
-            // 🔹 Validar y convertir `hora_programada`
+            // Validar que la hora programada sea válida
             const horaValida = new Date(hora_programada);
             if (isNaN(horaValida.getTime())) {
                 return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
             }
     
-            const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // `YYYY-MM-DD HH:mm:ss`
+            const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // Formato `YYYY-MM-DD HH:mm:ss`
     
-            // 🔹 Guardar en la base de datos
+            // Insertar la alarma en la base de datos
             const [result] = await db.execute(
-                "INSERT INTO alarmas (usuario_nss, nombre_medicamento, hora_programada) VALUES (?, ?, ?)",
-                [usuario_nss, nombre_medicamento, horaFormateada]
+                "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                [medicamento_id, usuario_nss, horaFormateada]
             );
-    
-            // 🔹 Obtener el token Expo del usuario
-            const [tokenResult] = await db.execute(
-                "SELECT token_expo FROM usuarios WHERE nss = ?",
-                [usuario_nss]
-            );
-    
-            if (tokenResult.length === 0 || !tokenResult[0].token_expo) {
-                console.log(`⚠ Usuario ${usuario_nss} no tiene token Expo.`);
-                return res.status(201).json({
-                    message: "Alarma creada exitosamente, pero no se envió notificación.",
-                    alarma: { id: result.insertId, usuario_nss, nombre_medicamento, hora_programada: horaFormateada },
-                });
-            }
-    
-            const tokenExpo = tokenResult[0].token_expo;
-    
-            // 🔹 Enviar notificación push
-            await enviarNotificacionExpo(tokenExpo, "⏰ ¡Es hora de tu medicamento!", `Toma: ${nombre_medicamento}`);
     
             res.status(201).json({
-                message: "Alarma creada exitosamente y notificación enviada.",
-                alarma: { id: result.insertId, usuario_nss, nombre_medicamento, hora_programada: horaFormateada },
+                message: "Alarma creada exitosamente.",
+                alarma: {
+                    id: result.insertId,
+                    medicamento_id,
+                    usuario_nss,
+                    hora_programada: horaFormateada,
+                    estado: "Pendiente",
+                },
             });
-    
         } catch (error) {
             console.error("❌ Error al crear alarma:", error);
             res.status(500).json({ error: "Error al crear la alarma." });
         }
     });
+    
     
     app.post("/registrar-token", async (req, res) => {
         const { nss, token_expo } = req.body;
