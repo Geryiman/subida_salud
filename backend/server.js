@@ -310,79 +310,61 @@ async function iniciarServidor() {
         }
     });
 
-    app.post("/tratamientos", async (req, res) => {
+      // 📌 Endpoint para crear tratamientos y generar alarmas iniciales
+      app.post("/tratamientos", async (req, res) => {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
-    
+
         if (!usuario_nss || !nombre_tratamiento || !descripcion || !Array.isArray(medicamentos)) {
             return res.status(400).json({ error: "Datos incompletos. Verifica el NSS, nombre del tratamiento, descripción y medicamentos." });
         }
-    
+
         try {
             console.log("Datos recibidos en el backend:", { usuario_nss, nombre_tratamiento, descripcion, medicamentos });
-    
+
             const [tratamiento] = await db.execute(
                 "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
                 [usuario_nss, nombre_tratamiento, descripcion]
             );
-    
+
             const tratamientoId = tratamiento.insertId;
-            console.log("Tratamiento guardado con ID:", tratamientoId);
-    
+
             for (const med of medicamentos) {
                 const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
-    
+
                 if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
                     console.error("⚠ Medicamento con datos incompletos:", med);
                     continue;
                 }
-    
-                // Convertir hora_inicio a la zona horaria de México
-                let horaInicio = null;
-    
-                if (/^\d{2}:\d{2}:\d{2}$/.test(hora_inicio)) {
-                    // Si solo tenemos HH:mm:ss, añadimos la fecha actual
-                    const currentDate = moment().tz("America/Mexico_City").format("YYYY-MM-DD");
-                    horaInicio = moment.tz(`${currentDate} ${hora_inicio}`, "America/Mexico_City").toDate();
-                } else {
-                    horaInicio = moment.tz(hora_inicio, "America/Mexico_City").toDate();
-                }
-    
+
+                const horaInicio = moment.tz(hora_inicio, "America/Mexico_City").toDate();
                 if (isNaN(horaInicio.getTime())) {
                     console.error("❌ No se pudo interpretar la hora_inicio:", hora_inicio);
                     continue;
                 }
-    
-                const formattedHoraInicio = moment(horaInicio).tz("America/Mexico_City").format("YYYY-MM-DD HH:mm:ss");
-    
+
+                const formattedHoraInicio = moment(horaInicio).format("YYYY-MM-DD HH:mm:ss");
                 const [medicamento] = await db.execute(
                     "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
                     [tratamientoId, nombre_medicamento, dosis, formattedHoraInicio, parseFloat(intervalo_horas)]
                 );
-    
+
                 const medicamentoId = medicamento.insertId;
-    
-                // Generar alarmas
+
                 const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000;
-                let horaActual = new Date(horaInicio); // Clonar horaInicio para evitar modificar el valor original
-    
                 for (let i = 0; i < 5; i++) {
-                    const horaAlarma = new Date(horaActual.getTime());
-                    const formattedHoraAlarma = moment(horaAlarma).tz("America/Mexico_City").format("YYYY-MM-DD HH:mm:ss");
-    
+                    const horaAlarma = new Date(horaInicio.getTime() + i * intervaloMs);
+                    const formattedHoraAlarma = moment(horaAlarma).format("YYYY-MM-DD HH:mm:ss");
+
                     await db.execute(
-                        "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada) VALUES (?, ?, ?)",
+                        "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
                         [medicamentoId, usuario_nss, formattedHoraAlarma]
                     );
-    
-                    // Incrementar la hora actual para la siguiente iteración
-                    horaActual = new Date(horaActual.getTime() + intervaloMs);
-    
+
                     console.log("Alarma generada:", formattedHoraAlarma);
                 }
             }
-    
+
             res.status(201).json({ message: "Tratamiento y medicamentos guardados exitosamente." });
-    
         } catch (error) {
             console.error("❌ Error al guardar tratamiento:", error);
             res.status(500).json({ error: "Error al guardar tratamiento. Intenta nuevamente." });
@@ -629,75 +611,60 @@ async function iniciarServidor() {
         }
     });
 
-    cron.schedule("* * * * *", async () => {
-        console.log("⏰ Verificando alarmas pendientes...");
     
-        try {
-            const ahora = new Date().toISOString().slice(0, 19).replace("T", " ");
-            const [alarmasPendientes] = await db.execute(
-                `SELECT a.id, a.usuario_nss, a.hora_programada, m.nombre_medicamento, 
-                        m.id AS medicamento_id, m.intervalo_horas, u.token_expo
-                 FROM alarmas a
-                 JOIN usuarios u ON a.usuario_nss = u.nss
-                 JOIN medicamentos m ON a.medicamento_id = m.id
-                 WHERE a.estado = 'Pendiente' AND a.hora_programada <= ?
-                 ORDER BY a.hora_programada ASC`,
-                [ahora]
-            );
-    
-            for (const alarma of alarmasPendientes) {
-                const { id, usuario_nss, hora_programada, nombre_medicamento, token_expo, medicamento_id, intervalo_horas } = alarma;
-    
-                if (!token_expo) {
-                    console.log(`⚠ Usuario ${usuario_nss} no tiene token Expo registrado.`);
-                    continue;
-                }
-    
-                try {
-                    await enviarNotificacionExpo(
-                        token_expo,
-                        "⏰ ¡Es hora de tu medicamento!",
-                        `Toma tu medicamento: ${nombre_medicamento}. Programado para las ${hora_programada}`,
-                        { screen: "ActiveAlarmScreen", medicamento_id: id }
-                    );
-                    console.log(`✅ Notificación enviada para la alarma ${id}, usuario ${usuario_nss}.`);
-    
-                    // Verificar cuántas alarmas quedan para este medicamento
-                    const [alarmasRestantes] = await db.execute(
-                        "SELECT COUNT(*) AS total FROM alarmas WHERE medicamento_id = ? AND estado = 'Pendiente'",
-                        [medicamento_id]
-                    );
-    
-                    if (alarmasRestantes[0].total === 1) {
-                        console.log(`⚠ Solo queda una alarma para el medicamento ${nombre_medicamento}. Generando 5 nuevas...`);
-                        
-                        let ultimaHora = new Date(hora_programada);
-                        for (let i = 0; i < 5; i++) {
-                            ultimaHora = new Date(ultimaHora.getTime() + (intervalo_horas * 60 * 60 * 1000)); // Agregar el intervalo
-                            const nuevaHora = ultimaHora.toISOString().slice(0, 19).replace("T", " ");
-    
-                            await db.execute(
-                                "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
-                                [medicamento_id, usuario_nss, nuevaHora]
-                            );
-                            console.log(`✅ Nueva alarma programada para: ${nuevaHora}`);
-                        }
-                    }
-                } catch (notiError) {
-                    console.error(`❌ Error al enviar notificación para usuario ${usuario_nss}:`, notiError);
-                }
-            }
-    
-            if (alarmasPendientes.length === 0) {
-                console.log("✅ No hay alarmas pendientes en este momento.");
-            }
-        } catch (error) {
-            console.error("❌ Error al verificar o enviar notificaciones:", error);
-        }
-    });
-    
-    
+ // 📌 Cron job para verificar alarmas pendientes y generar nuevas
+ cron.schedule("* * * * *", async () => {
+    console.log("⏰ Verificando alarmas pendientes...");
 
+    try {
+        const ahora = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const [alarmasPendientes] = await db.execute(
+            `SELECT a.id, a.usuario_nss, a.hora_programada, m.nombre_medicamento, 
+                    m.id AS medicamento_id, m.intervalo_horas, u.token_expo
+             FROM alarmas a
+             JOIN usuarios u ON a.usuario_nss = u.nss
+             JOIN medicamentos m ON a.medicamento_id = m.id
+             WHERE a.estado = 'Pendiente' AND a.hora_programada <= ?
+             ORDER BY a.hora_programada ASC`,
+            [ahora]
+        );
+
+        for (const alarma of alarmasPendientes) {
+            const { id, usuario_nss, hora_programada, medicamento_id, intervalo_horas } = alarma;
+
+            // Verificar cuántas alarmas quedan para este medicamento
+            const [alarmasRestantes] = await db.execute(
+                "SELECT COUNT(*) AS total FROM alarmas WHERE medicamento_id = ? AND estado = 'Pendiente'",
+                [medicamento_id]
+            );
+
+            if (alarmasRestantes[0].total === 1) {
+                console.log(`⚠ Solo queda una alarma. Generando 5 nuevas...`);
+
+                const ultimaHora = new Date(hora_programada);
+                const intervaloMs = intervalo_horas * 60 * 60 * 1000;
+
+                for (let i = 1; i <= 5; i++) {
+                    const nuevaHora = new Date(ultimaHora.getTime() + i * intervaloMs);
+                    const formattedNuevaHora = moment(nuevaHora).format("YYYY-MM-DD HH:mm:ss");
+
+                    await db.execute(
+                        "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                        [medicamento_id, usuario_nss, formattedNuevaHora]
+                    );
+
+                    console.log(`✅ Nueva alarma programada para: ${formattedNuevaHora}`);
+                }
+            }
+        }
+
+        if (alarmasPendientes.length === 0) {
+            console.log("✅ No hay alarmas pendientes en este momento.");
+        }
+    } catch (error) {
+        console.error("❌ Error al verificar o enviar notificaciones:", error);
+    }
+});
     
 async function enviarNotificacionExpo(token, title, body, data = {}) {
     const message = {
