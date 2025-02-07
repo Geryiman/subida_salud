@@ -708,6 +708,114 @@ async function enviarNotificacionExpo(token, title, body, data = {}) {
 
 
 
+app.get("/administrador/usuarios", async (req, res) => {
+    try {
+        const [usuarios] = await db.execute("SELECT id, nss, nombre, edad, sexo FROM usuarios");
+        res.status(200).json(usuarios);
+    } catch (error) {
+        console.error("❌ Error al obtener usuarios:", error);
+        res.status(500).json({ error: "Error al obtener usuarios." });
+    }
+});
+
+app.get("/administrador/usuario/:nss", async (req, res) => {
+    const { nss } = req.params;
+
+    try {
+        // Obtener datos del usuario
+        const [usuario] = await db.execute("SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?", [nss]);
+        if (usuario.length === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        // Obtener tratamientos y medicamentos asociados
+        const [tratamientos] = await db.execute("SELECT * FROM tratamientos WHERE usuario_nss = ?", [nss]);
+        for (const tratamiento of tratamientos) {
+            const [medicamentos] = await db.execute(
+                "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
+                [tratamiento.id]
+            );
+            tratamiento.medicamentos = medicamentos;
+        }
+
+        // Obtener la última foto de perfil
+        const [fotoPerfil] = await db.execute(
+            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+            [nss]
+        );
+
+        // Obtener todas las imágenes de pruebas
+        const [pruebas] = await db.execute(
+            "SELECT url, descripcion, hora_subida FROM imagenes WHERE usuario_nss = ? AND tipo = 'medicamento'",
+            [nss]
+        );
+
+        res.json({
+            usuario: usuario[0],
+            tratamientos,
+            fotoPerfil: fotoPerfil.length > 0 ? fotoPerfil[0].url : null,
+            pruebas,
+        });
+    } catch (error) {
+        console.error("❌ Error al obtener datos del usuario:", error);
+        res.status(500).json({ error: "Error al obtener datos del usuario." });
+    }
+});
+
+app.delete("/administrador/usuario/:nss", async (req, res) => {
+    const { nss } = req.params;
+
+    try {
+        // Verificar si el usuario existe
+        const [usuario] = await db.execute("SELECT * FROM usuarios WHERE nss = ?", [nss]);
+        if (usuario.length === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        // Eliminar alarmas del usuario
+        await db.execute(
+            "DELETE a FROM alarmas a JOIN medicamentos m ON a.medicamento_id = m.id WHERE m.tratamiento_id IN (SELECT id FROM tratamientos WHERE usuario_nss = ?)",
+            [nss]
+        );
+
+        // Eliminar medicamentos del usuario
+        await db.execute(
+            "DELETE m FROM medicamentos m WHERE m.tratamiento_id IN (SELECT id FROM tratamientos WHERE usuario_nss = ?)",
+            [nss]
+        );
+
+        // Eliminar tratamientos del usuario
+        await db.execute("DELETE FROM tratamientos WHERE usuario_nss = ?", [nss]);
+
+        // Obtener URLs de las imágenes del usuario antes de eliminarlas
+        const [imagenes] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ?", [nss]);
+        const keys = imagenes.map((img) => img.url.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1]);
+
+        // Eliminar imágenes del usuario en DigitalOcean Spaces
+        for (const key of keys) {
+            try {
+                const deleteParams = { Bucket: "salud-magenes", Key: key };
+                await s3Client.send(new DeleteObjectCommand(deleteParams));
+                console.log(`✅ Imagen eliminada: ${key}`);
+            } catch (error) {
+                console.error(`❌ Error al eliminar imagen: ${key}`, error);
+            }
+        }
+
+        // Eliminar imágenes del usuario en la base de datos
+        await db.execute("DELETE FROM imagenes WHERE usuario_nss = ?", [nss]);
+
+        // Finalmente, eliminar el usuario
+        await db.execute("DELETE FROM usuarios WHERE nss = ?", [nss]);
+
+        res.status(200).json({ message: "Usuario y todos sus datos relacionados han sido eliminados exitosamente." });
+    } catch (error) {
+        console.error("❌ Error al eliminar usuario:", error);
+        res.status(500).json({ error: "Error al eliminar el usuario." });
+    }
+});
+
+
 
     app.listen(PORT, () => console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`));
 }
