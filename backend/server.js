@@ -635,16 +635,18 @@ async function iniciarServidor() {
         try {
             const ahora = new Date().toISOString().slice(0, 19).replace("T", " ");
             const [alarmasPendientes] = await db.execute(
-                `SELECT a.id, a.usuario_nss, a.hora_programada, m.nombre_medicamento, u.token_expo
+                `SELECT a.id, a.usuario_nss, a.hora_programada, m.nombre_medicamento, 
+                        m.id AS medicamento_id, m.intervalo_horas, u.token_expo
                  FROM alarmas a
                  JOIN usuarios u ON a.usuario_nss = u.nss
                  JOIN medicamentos m ON a.medicamento_id = m.id
-                 WHERE a.estado = 'Pendiente' AND a.hora_programada <= ?`,
+                 WHERE a.estado = 'Pendiente' AND a.hora_programada <= ?
+                 ORDER BY a.hora_programada ASC`,
                 [ahora]
             );
     
             for (const alarma of alarmasPendientes) {
-                const { id, usuario_nss, hora_programada, nombre_medicamento, token_expo } = alarma;
+                const { id, usuario_nss, hora_programada, nombre_medicamento, token_expo, medicamento_id, intervalo_horas } = alarma;
     
                 if (!token_expo) {
                     console.log(`⚠ Usuario ${usuario_nss} no tiene token Expo registrado.`);
@@ -659,6 +661,28 @@ async function iniciarServidor() {
                         { screen: "ActiveAlarmScreen", medicamento_id: id }
                     );
                     console.log(`✅ Notificación enviada para la alarma ${id}, usuario ${usuario_nss}.`);
+    
+                    // Verificar cuántas alarmas quedan para este medicamento
+                    const [alarmasRestantes] = await db.execute(
+                        "SELECT COUNT(*) AS total FROM alarmas WHERE medicamento_id = ? AND estado = 'Pendiente'",
+                        [medicamento_id]
+                    );
+    
+                    if (alarmasRestantes[0].total === 1) {
+                        console.log(`⚠ Solo queda una alarma para el medicamento ${nombre_medicamento}. Generando 5 nuevas...`);
+                        
+                        let ultimaHora = new Date(hora_programada);
+                        for (let i = 0; i < 5; i++) {
+                            ultimaHora = new Date(ultimaHora.getTime() + (intervalo_horas * 60 * 60 * 1000)); // Agregar el intervalo
+                            const nuevaHora = ultimaHora.toISOString().slice(0, 19).replace("T", " ");
+    
+                            await db.execute(
+                                "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                                [medicamento_id, usuario_nss, nuevaHora]
+                            );
+                            console.log(`✅ Nueva alarma programada para: ${nuevaHora}`);
+                        }
+                    }
                 } catch (notiError) {
                     console.error(`❌ Error al enviar notificación para usuario ${usuario_nss}:`, notiError);
                 }
@@ -673,6 +697,7 @@ async function iniciarServidor() {
     });
     
     
+
     
 async function enviarNotificacionExpo(token, title, body, data = {}) {
     const message = {
