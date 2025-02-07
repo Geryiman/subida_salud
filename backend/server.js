@@ -744,9 +744,15 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             [nss]
         );
 
-        // Obtener todas las imágenes de pruebas
+        // Obtener todas las imágenes de pruebas (medicamentos)
         const [pruebas] = await db.execute(
             "SELECT url, descripcion, hora_subida FROM imagenes WHERE usuario_nss = ? AND tipo = 'medicamento'",
+            [nss]
+        );
+
+        // Obtener imágenes que los usuarios subieron para apagar las alarmas
+        const [imagenesAlarmas] = await db.execute(
+            "SELECT imagen_prueba AS url, hora_programada FROM alarmas WHERE usuario_nss = ? AND imagen_prueba IS NOT NULL",
             [nss]
         );
 
@@ -755,6 +761,7 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             tratamientos,
             fotoPerfil: fotoPerfil.length > 0 ? fotoPerfil[0].url : null,
             pruebas,
+            imagenesAlarmas
         });
     } catch (error) {
         console.error("❌ Error al obtener datos del usuario:", error);
