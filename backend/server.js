@@ -795,12 +795,15 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             [nss]
         );
 
-        // Obtener imágenes de alarmas con el nombre del medicamento
+        // Obtener imágenes de alarmas con detalles del medicamento
         const [imagenesAlarmas] = await db.execute(
             `SELECT 
                 a.imagen_prueba AS url,
                 a.hora_programada,
-                m.nombre_medicamento
+                m.nombre_medicamento,
+                m.dosis,
+                m.hora_inicio,
+                m.intervalo_horas
              FROM alarmas a
              JOIN medicamentos m ON a.medicamento_id = m.id
              WHERE a.usuario_nss = ? AND a.imagen_prueba IS NOT NULL`,
@@ -818,6 +821,7 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
         res.status(500).json({ error: "Error al obtener datos del usuario." });
     }
 });
+
 
 
 
