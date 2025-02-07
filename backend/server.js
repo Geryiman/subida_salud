@@ -767,7 +767,9 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
         console.error("❌ Error al obtener datos del usuario:", error);
         res.status(500).json({ error: "Error al obtener datos del usuario." });
     }
-});app.get("/administrador/usuario/:nss", async (req, res) => {
+});
+
+app.get("/administrador/usuario/:nss", async (req, res) => {
     const { nss } = req.params;
 
     try {
@@ -793,11 +795,11 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             [nss]
         );
 
-        // Obtener imágenes subidas para pruebas de alarmas con el nombre del medicamento asociado
+        // Obtener imágenes de alarmas con nombre de medicamento
         const [imagenesAlarmas] = await db.execute(
             `SELECT 
-                a.imagen_prueba AS url, 
-                a.hora_programada, 
+                a.imagen_prueba AS url,
+                a.hora_programada,
                 m.nombre_medicamento
              FROM alarmas a
              JOIN medicamentos m ON a.medicamento_id = m.id
@@ -816,7 +818,6 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
         res.status(500).json({ error: "Error al obtener datos del usuario." });
     }
 });
-
 
 
 
