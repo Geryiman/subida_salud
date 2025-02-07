@@ -732,6 +732,12 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             return res.status(404).json({ error: "Usuario no encontrado." });
         }
 
+        // Obtener la última foto de perfil
+        const [fotoPerfil] = await db.execute(
+            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
+            [nss]
+        );
+
         // Obtener medicamentos relacionados con el usuario
         const [medicamentos] = await db.execute(
             `SELECT 
@@ -778,6 +784,7 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
 
         res.json({
             usuario: usuario[0],
+            fotoPerfil: fotoPerfil.length > 0 ? fotoPerfil[0].url : null,
             medicamentos,
             alarmas: alarmasConDetalles,
         });
