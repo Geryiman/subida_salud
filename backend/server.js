@@ -707,7 +707,7 @@ async function enviarNotificacionExpo(token, title, body, data = {}) {
 }
 
 
-
+// ENPOINT PARA OBTENER LOS DATOS DE TODOS LOS USUARIOS
 app.get("/administrador/usuarios", async (req, res) => {
     try {
         const [usuarios] = await db.execute("SELECT id, nss, nombre, edad, sexo FROM usuarios");
@@ -718,56 +718,9 @@ app.get("/administrador/usuarios", async (req, res) => {
     }
 });
 
-app.get("/administrador/usuario/:nss", async (req, res) => {
-    const { nss } = req.params;
 
-    try {
-        // Obtener datos del usuario
-        const [usuario] = await db.execute("SELECT nombre, edad, sexo FROM usuarios WHERE nss = ?", [nss]);
-        if (usuario.length === 0) {
-            return res.status(404).json({ error: "Usuario no encontrado." });
-        }
 
-        // Obtener tratamientos y medicamentos asociados
-        const [tratamientos] = await db.execute("SELECT * FROM tratamientos WHERE usuario_nss = ?", [nss]);
-        for (const tratamiento of tratamientos) {
-            const [medicamentos] = await db.execute(
-                "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
-                [tratamiento.id]
-            );
-            tratamiento.medicamentos = medicamentos;
-        }
-
-        // Obtener la última foto de perfil
-        const [fotoPerfil] = await db.execute(
-            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-            [nss]
-        );
-
-        // Obtener todas las imágenes de pruebas (medicamentos)
-        const [pruebas] = await db.execute(
-            "SELECT url, descripcion, hora_subida FROM imagenes WHERE usuario_nss = ? AND tipo = 'medicamento'",
-            [nss]
-        );
-
-        // Obtener imágenes que los usuarios subieron para apagar las alarmas
-        const [imagenesAlarmas] = await db.execute(
-            "SELECT imagen_prueba AS url, hora_programada FROM alarmas WHERE usuario_nss = ? AND imagen_prueba IS NOT NULL",
-            [nss]
-        );
-
-        res.json({
-            usuario: usuario[0],
-            tratamientos,
-            fotoPerfil: fotoPerfil.length > 0 ? fotoPerfil[0].url : null,
-            pruebas,
-            imagenesAlarmas
-        });
-    } catch (error) {
-        console.error("❌ Error al obtener datos del usuario:", error);
-        res.status(500).json({ error: "Error al obtener datos del usuario." });
-    }
-});
+// 📌 Endpoint para obtener datos de un usuario y sus medicamentos
 
 app.get("/administrador/usuario/:nss", async (req, res) => {
     const { nss } = req.params;
@@ -779,42 +732,54 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
             return res.status(404).json({ error: "Usuario no encontrado." });
         }
 
-        // Obtener tratamientos y medicamentos asociados
-        const [tratamientos] = await db.execute("SELECT * FROM tratamientos WHERE usuario_nss = ?", [nss]);
-        for (const tratamiento of tratamientos) {
-            const [medicamentos] = await db.execute(
-                "SELECT * FROM medicamentos WHERE tratamiento_id = ?",
-                [tratamiento.id]
-            );
-            tratamiento.medicamentos = medicamentos;
-        }
-
-        // Obtener la última foto de perfil
-        const [fotoPerfil] = await db.execute(
-            "SELECT url FROM imagenes WHERE usuario_nss = ? AND tipo = 'perfil' ORDER BY id DESC LIMIT 1",
-            [nss]
-        );
-
-        // Obtener imágenes de alarmas con detalles del medicamento
-        const [imagenesAlarmas] = await db.execute(
+        // Obtener medicamentos relacionados con el usuario
+        const [medicamentos] = await db.execute(
             `SELECT 
-                a.imagen_prueba AS url,
-                a.hora_programada,
+                m.id AS medicamento_id,
                 m.nombre_medicamento,
                 m.dosis,
                 m.hora_inicio,
                 m.intervalo_horas
+             FROM medicamentos m
+             JOIN tratamientos t ON m.tratamiento_id = t.id
+             WHERE t.usuario_nss = ?`,
+            [nss]
+        );
+
+        // Crear un diccionario para acceder rápidamente a los medicamentos por su ID
+        const medicamentosDict = {};
+        medicamentos.forEach((med) => {
+            medicamentosDict[med.medicamento_id] = med;
+        });
+
+        // Obtener alarmas relacionadas con el usuario
+        const [alarmas] = await db.execute(
+            `SELECT 
+                a.id AS alarma_id,
+                a.medicamento_id,
+                a.hora_programada,
+                a.imagen_prueba
              FROM alarmas a
-             JOIN medicamentos m ON a.medicamento_id = m.id
              WHERE a.usuario_nss = ? AND a.imagen_prueba IS NOT NULL`,
             [nss]
         );
 
+        // Enriquecer las alarmas con la información de los medicamentos
+        const alarmasConDetalles = alarmas.map((alarma) => {
+            const medicamento = medicamentosDict[alarma.medicamento_id] || {};
+            return {
+                ...alarma,
+                nombre_medicamento: medicamento.nombre_medicamento || "Desconocido",
+                dosis: medicamento.dosis || "No especificada",
+                hora_inicio: medicamento.hora_inicio || "No especificada",
+                intervalo_horas: medicamento.intervalo_horas || "No especificado",
+            };
+        });
+
         res.json({
             usuario: usuario[0],
-            tratamientos,
-            fotoPerfil: fotoPerfil.length > 0 ? fotoPerfil[0].url : null,
-            imagenesAlarmas,
+            medicamentos,
+            alarmas: alarmasConDetalles,
         });
     } catch (error) {
         console.error("❌ Error al obtener datos del usuario:", error);
@@ -822,6 +787,59 @@ app.get("/administrador/usuario/:nss", async (req, res) => {
     }
 });
 
+// ENPOINT PARA ELIMINAR DATOS DE UN USUARIO
+app.delete("/administrador/usuario/:nss", async (req, res) => {
+    const { nss } = req.params;
+
+    try {
+        // Verificar si el usuario existe
+        const [usuario] = await db.execute("SELECT * FROM usuarios WHERE nss = ?", [nss]);
+        if (usuario.length === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        // Eliminar alarmas del usuario
+        await db.execute(
+            "DELETE a FROM alarmas a JOIN medicamentos m ON a.medicamento_id = m.id WHERE m.tratamiento_id IN (SELECT id FROM tratamientos WHERE usuario_nss = ?)",
+            [nss]
+        );
+
+        // Eliminar medicamentos del usuario
+        await db.execute(
+            "DELETE m FROM medicamentos m WHERE m.tratamiento_id IN (SELECT id FROM tratamientos WHERE usuario_nss = ?)",
+            [nss]
+        );
+
+        // Eliminar tratamientos del usuario
+        await db.execute("DELETE FROM tratamientos WHERE usuario_nss = ?", [nss]);
+
+        // Obtener URLs de las imágenes del usuario antes de eliminarlas
+        const [imagenes] = await db.execute("SELECT url FROM imagenes WHERE usuario_nss = ?", [nss]);
+        const keys = imagenes.map((img) => img.url.split("https://salud-magenes.sfo2.digitaloceanspaces.com/")[1]);
+
+        // Eliminar imágenes del usuario en DigitalOcean Spaces
+        for (const key of keys) {
+            try {
+                const deleteParams = { Bucket: "salud-magenes", Key: key };
+                await s3Client.send(new DeleteObjectCommand(deleteParams));
+                console.log(`✅ Imagen eliminada: ${key}`);
+            } catch (error) {
+                console.error(`❌ Error al eliminar imagen: ${key}`, error);
+            }
+        }
+
+        // Eliminar imágenes del usuario en la base de datos
+        await db.execute("DELETE FROM imagenes WHERE usuario_nss = ?", [nss]);
+
+        // Finalmente, eliminar el usuario
+        await db.execute("DELETE FROM usuarios WHERE nss = ?", [nss]);
+
+        res.status(200).json({ message: "Usuario y todos sus datos relacionados han sido eliminados exitosamente." });
+    } catch (error) {
+        console.error("❌ Error al eliminar usuario:", error);
+        res.status(500).json({ error: "Error al eliminar el usuario." });
+    }
+});
 
 
 
