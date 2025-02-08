@@ -268,6 +268,8 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al subir la imagen." });
         }
     });
+
+
     // 📌 Endpoint para obtener todas las imágenes de medicamentos de un usuario
     app.get("/medicamentos/:nss", async (req, res) => {
         try {
@@ -285,6 +287,7 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la imagen." });
         }
     });
+
 
     // 📌 Endpoint para obtener la información completa del usuario
     app.get("/usuario/:nss", async (req, res) => {
@@ -325,18 +328,16 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la información." });
         }
     });
-
-      // 📌 Endpoint para crear tratamientos y generar alarmas iniciales
-      app.post("/tratamientos", async (req, res) => {
+    
+    // 📌 Endpoint para crear tratamientos y generar alarmas iniciales
+    app.post("/tratamientos", async (req, res) => {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
 
         if (!usuario_nss || !nombre_tratamiento || !descripcion || !Array.isArray(medicamentos)) {
-            return res.status(400).json({ error: "Datos incompletos. Verifica el NSS, nombre del tratamiento, descripción y medicamentos." });
+            return res.status(400).json({ error: "Datos incompletos. Verifica los campos." });
         }
 
         try {
-            console.log("Datos recibidos en el backend:", { usuario_nss, nombre_tratamiento, descripcion, medicamentos });
-
             const [tratamiento] = await db.execute(
                 "INSERT INTO tratamientos (usuario_nss, nombre_tratamiento, descripcion) VALUES (?, ?, ?)",
                 [usuario_nss, nombre_tratamiento, descripcion]
@@ -348,44 +349,37 @@ async function iniciarServidor() {
                 const { nombre_medicamento, dosis, hora_inicio, intervalo_horas } = med;
 
                 if (!nombre_medicamento || !dosis || !hora_inicio || !intervalo_horas) {
-                    console.error("⚠ Medicamento con datos incompletos:", med);
                     continue;
                 }
 
-                const horaInicio = moment.tz(hora_inicio, "America/Mexico_City").toDate();
-                if (isNaN(horaInicio.getTime())) {
-                    console.error("❌ No se pudo interpretar la hora_inicio:", hora_inicio);
-                    continue;
-                }
+                const formattedHoraInicio = moment.tz(hora_inicio, "America/Mexico_City").format("YYYY-MM-DD HH:mm:ss");
 
-                const formattedHoraInicio = moment(horaInicio).format("YYYY-MM-DD HH:mm:ss");
                 const [medicamento] = await db.execute(
                     "INSERT INTO medicamentos (tratamiento_id, nombre_medicamento, dosis, hora_inicio, intervalo_horas) VALUES (?, ?, ?, ?, ?)",
                     [tratamientoId, nombre_medicamento, dosis, formattedHoraInicio, parseFloat(intervalo_horas)]
                 );
 
                 const medicamentoId = medicamento.insertId;
-
                 const intervaloMs = parseFloat(intervalo_horas) * 60 * 60 * 1000;
-                for (let i = 0; i < 5; i++) {
-                    const horaAlarma = new Date(horaInicio.getTime() + i * intervaloMs);
+
+                for (let i = 0; i < 2; i++) {
+                    const horaAlarma = new Date(new Date(formattedHoraInicio).getTime() + i * intervaloMs);
                     const formattedHoraAlarma = moment(horaAlarma).format("YYYY-MM-DD HH:mm:ss");
 
                     await db.execute(
                         "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
                         [medicamentoId, usuario_nss, formattedHoraAlarma]
                     );
-
-                    console.log("Alarma generada:", formattedHoraAlarma);
                 }
             }
 
-            res.status(201).json({ message: "Tratamiento y medicamentos guardados exitosamente." });
+            res.status(201).json({ message: "Tratamiento guardado con alarmas iniciales." });
         } catch (error) {
-            console.error("❌ Error al guardar tratamiento:", error);
-            res.status(500).json({ error: "Error al guardar tratamiento. Intenta nuevamente." });
+            res.status(500).json({ error: "Error al guardar tratamiento." });
         }
     });
+
+
     
 
     // 📌 Endpoint para obtener tratamientos por usuario
@@ -412,48 +406,27 @@ async function iniciarServidor() {
         }
     });
 
- app.get("/alarmas/:nss", async (req, res) => {
-    const { nss } = req.params;
+    // 📌 Endpoint para obtener alarmas por usuario
+    app.get("/alarmas/:nss", async (req, res) => {
+        const { nss } = req.params;
 
-    try {
-        // Obtener las alarmas del usuario que están pendientes
-        const [alarmas] = await db.execute(
-            `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
-             FROM alarmas a
-             JOIN medicamentos m ON a.medicamento_id = m.id
-             WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
-             ORDER BY a.hora_programada ASC`,
-            [nss]
-        );
+        try {
+            const [alarmas] = await db.execute(
+                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
+                 FROM alarmas a
+                 JOIN medicamentos m ON a.medicamento_id = m.id
+                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+                 ORDER BY a.hora_programada ASC`,
+                [nss]
+            );
 
-        // Verificar si alguna alarma ya pasó su hora programada
-        const ahora = new Date();
-        const alarmasActualizadas = [];
-
-        for (const alarma of alarmas) {
-            const horaProgramada = new Date(alarma.hora_programada);
-
-            if (horaProgramada < ahora) {
-                // Reprogramar alarma para 5 minutos después
-                const nuevaHora = new Date(ahora.getTime() + 5 * 60 * 1000);
-                alarma.hora_programada = nuevaHora.toISOString().slice(0, 19).replace("T", " ");
-
-                // Actualizar la base de datos con la nueva hora
-                await db.execute(
-                    "UPDATE alarmas SET hora_programada = ? WHERE id = ?",
-                    [alarma.hora_programada, alarma.id]
-                );
-            }
-
-            alarmasActualizadas.push(alarma);
+            res.status(200).json(alarmas);
+        } catch (error) {
+            res.status(500).json({ error: "Error al obtener alarmas." });
         }
+    });
 
-        res.status(200).json(alarmasActualizadas);
-    } catch (error) {
-        console.error("❌ Error al obtener alarmas:", error);
-        res.status(500).json({ error: "Error al obtener alarmas." });
-    }
-});
+
 
     router.post("/imagenes", upload.single("imagen"), async (req, res) => {
         const { usuario_nss } = req.body;
@@ -490,26 +463,49 @@ async function iniciarServidor() {
         }
     });
 
-    router.patch("/alarmas/:id/apagar", async (req, res) => {
-        const { id } = req.params;
 
-        try {
-            // Actualizar el estado de la alarma como "Tomada"
-            const [result] = await db.execute(
-                "UPDATE alarmas SET estado = 'Tomada' WHERE id = ?",
-                [id]
-            );
 
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ error: "No se encontró la alarma." });
-            }
+ // 📌 Endpoint para apagar una alarma y generar la siguiente
+ app.patch("/alarmas/:id/apagar", async (req, res) => {
+    const { id } = req.params;
 
-            res.status(200).json({ message: "Alarma apagada exitosamente." });
-        } catch (error) {
-            console.error("❌ Error al apagar la alarma:", error);
-            res.status(500).json({ error: "Error al apagar la alarma." });
+    try {
+        const [alarma] = await db.execute(
+            `SELECT a.medicamento_id, a.usuario_nss, a.hora_programada, m.intervalo_horas 
+             FROM alarmas a
+             JOIN medicamentos m ON a.medicamento_id = m.id
+             WHERE a.id = ?`,
+            [id]
+        );
+
+        if (alarma.length === 0) {
+            return res.status(404).json({ error: "No se encontró la alarma." });
         }
-    });
+
+        const { medicamento_id, usuario_nss, hora_programada, intervalo_horas } = alarma[0];
+
+        await db.execute("UPDATE alarmas SET estado = 'Tomada' WHERE id = ?", [id]);
+
+        const [alarmasRestantes] = await db.execute(
+            "SELECT COUNT(*) AS total FROM alarmas WHERE medicamento_id = ? AND estado = 'Pendiente'",
+            [medicamento_id]
+        );
+
+        if (alarmasRestantes[0].total === 1) {
+            const nuevaHora = new Date(new Date(hora_programada).getTime() + intervalo_horas * 60 * 60 * 1000);
+            const formattedNuevaHora = moment(nuevaHora).format("YYYY-MM-DD HH:mm:ss");
+
+            await db.execute(
+                "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
+                [medicamento_id, usuario_nss, formattedNuevaHora]
+            );
+        }
+
+        res.status(200).json({ message: "Alarma apagada exitosamente." });
+    } catch (error) {
+        res.status(500).json({ error: "Error al apagar la alarma." });
+    }
+});
 
     // 📌 Endpoint para subir imagen y apagar alarma
     app.post("/alarmas/apagar", upload.single("imagen"), async (req, res) => {
