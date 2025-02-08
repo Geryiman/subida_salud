@@ -650,8 +650,8 @@ app.get("/alarmas/:nss", async (req, res) => {
     });
     
     
- // 📌 Cron job para verificar alarmas pendientes y generar nuevas
- cron.schedule("* * * * *", async () => {
+// 📌 Cron job para verificar alarmas pendientes y enviar notificaciones
+cron.schedule("* * * * *", async () => {
     console.log("⏰ Verificando alarmas pendientes...");
 
     try {
@@ -668,9 +668,25 @@ app.get("/alarmas/:nss", async (req, res) => {
         );
 
         for (const alarma of alarmasPendientes) {
-            const { id, usuario_nss, hora_programada, medicamento_id, intervalo_horas } = alarma;
+            const { id, usuario_nss, hora_programada, medicamento_id, intervalo_horas, token_expo, nombre_medicamento } = alarma;
 
-            // Verificar cuántas alarmas quedan para este medicamento
+            if (token_expo) {
+                console.log(`📢 Enviando notificación a ${usuario_nss} para la alarma ${id}...`);
+                
+                await enviarNotificacionExpo(
+                    token_expo,
+                    "¡Es hora de tomar tu medicamento! 💊",
+                    `Recuerda tomar ${nombre_medicamento} ahora.`,
+                    { tipo: "alarma", id_alarma: id }
+                );
+
+                // 📌 Marcar la alarma como "Notificada"
+                await db.execute("UPDATE alarmas SET estado = 'Notificada' WHERE id = ?", [id]);
+            } else {
+                console.warn(`⚠ El usuario ${usuario_nss} no tiene token Expo, no se enviará notificación.`);
+            }
+
+            // 📌 Verificar cuántas alarmas quedan para este medicamento
             const [alarmasRestantes] = await db.execute(
                 "SELECT COUNT(*) AS total FROM alarmas WHERE medicamento_id = ? AND estado = 'Pendiente'",
                 [medicamento_id]
@@ -703,15 +719,17 @@ app.get("/alarmas/:nss", async (req, res) => {
         console.error("❌ Error al verificar o enviar notificaciones:", error);
     }
 });
-    
 async function enviarNotificacionExpo(token, title, body, data = {}) {
     const message = {
         to: token,
         sound: "default",
         title,
         body,
+        priority: "high", // 🔥 Hace que la notificación llegue incluso si el teléfono está bloqueado
         data,
     };
+
+    console.log("📤 Enviando notificación push:", message);
 
     try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -726,11 +744,12 @@ async function enviarNotificacionExpo(token, title, body, data = {}) {
         const result = await response.json();
         console.log("📢 Notificación enviada:", result);
 
+        // 📌 Si el dispositivo ya no está registrado, eliminamos el token
         if (result?.data?.errors && result.data.errors[0]?.details?.error === "DeviceNotRegistered") {
             console.log(`⚠ Eliminando token inválido: ${token}`);
             await db.execute("UPDATE usuarios SET token_expo = NULL WHERE token_expo = ?", [token]);
         }
-        
+
     } catch (error) {
         console.error("❌ Error al enviar notificación:", error);
     }
