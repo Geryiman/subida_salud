@@ -104,22 +104,38 @@ async function iniciarServidor() {
     });
 
     app.post('/login', async (req, res) => {
-        const { nss, contraseña } = req.body;
-
+        const { nss, contraseña, token_expo } = req.body; // Se agrega `token_expo` a los datos recibidos
+    
         // Validación de campos
         if (!nss || !contraseña) {
             return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
         }
-
+    
         try {
             // Verificar credenciales en la base de datos
             const [result] = await db.execute("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña]);
-
+    
             if (result.length === 0) {
                 return res.status(401).json({ error: "Credenciales inválidas." });
             }
-
+    
             const usuario = result[0];
+    
+            // Si se recibe un token Expo, actualizarlo en la base de datos
+            if (token_expo) {
+                console.log("ℹ️ Actualizando token Expo...");
+                const [updateResult] = await db.execute(
+                    "UPDATE usuarios SET token_expo = ? WHERE nss = ?",
+                    [token_expo, nss]
+                );
+    
+                if (updateResult.affectedRows > 0) {
+                    console.log("✅ Token Expo actualizado correctamente para el usuario:", nss);
+                } else {
+                    console.warn("⚠️ No se pudo actualizar el token Expo para el usuario:", nss);
+                }
+            }
+    
             res.json({
                 message: "Inicio de sesión exitoso",
                 usuario: {
@@ -134,7 +150,7 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al iniciar sesión." });
         }
     });
-
+    
 
     // 📌 Configuración de Multer para manejar archivos en memoria
     const storage = multer.memoryStorage();
