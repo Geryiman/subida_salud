@@ -328,7 +328,7 @@ async function iniciarServidor() {
             res.status(500).json({ error: "Error en el servidor al obtener la información." });
         }
     });
-    
+
     // 📌 Endpoint para crear tratamientos y generar alarmas iniciales
     app.post("/tratamientos", async (req, res) => {
         const { usuario_nss, nombre_tratamiento, descripcion, medicamentos } = req.body;
@@ -407,24 +407,30 @@ async function iniciarServidor() {
     });
 
     // 📌 Endpoint para obtener alarmas por usuario
-    app.get("/alarmas/:nss", async (req, res) => {
-        const { nss } = req.params;
+app.get("/alarmas/:nss", async (req, res) => {
+    const { nss } = req.params;
 
-        try {
-            const [alarmas] = await db.execute(
-                `SELECT a.id, a.hora_programada, a.estado, m.nombre_medicamento
-                 FROM alarmas a
-                 JOIN medicamentos m ON a.medicamento_id = m.id
-                 WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
-                 ORDER BY a.hora_programada ASC`,
-                [nss]
-            );
+    try {
+        const [alarmas] = await db.execute(
+            `SELECT 
+                a.id, 
+                DATE_FORMAT(a.hora_programada, '%Y-%m-%d %H:%i:%s') AS hora_programada, 
+                a.estado, 
+                m.nombre_medicamento
+             FROM alarmas a
+             JOIN medicamentos m ON a.medicamento_id = m.id
+             WHERE a.usuario_nss = ? AND a.estado = 'Pendiente'
+             ORDER BY a.hora_programada ASC`,
+            [nss]
+        );
 
-            res.status(200).json(alarmas);
-        } catch (error) {
-            res.status(500).json({ error: "Error al obtener alarmas." });
-        }
-    });
+        res.status(200).json(alarmas);
+    } catch (error) {
+        console.error("❌ Error al obtener alarmas:", error);
+        res.status(500).json({ error: "Error al obtener alarmas." });
+    }
+});
+
 
 
 
