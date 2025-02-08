@@ -585,32 +585,52 @@ async function iniciarServidor() {
         }
     });
     
-    
     app.post("/registrar-token", async (req, res) => {
         const { nss, token_expo } = req.body;
     
+        // Validar que los datos requeridos están presentes
+        console.log("📩 Datos recibidos en /registrar-token:", { nss, token_expo });
+    
         if (!nss || !token_expo) {
+            console.warn("⚠️ Faltan datos: NSS y token_expo son obligatorios.");
             return res.status(400).json({ error: "Faltan datos: NSS y token_expo son obligatorios." });
         }
     
         try {
-            // Actualizar el token del usuario basado en el NSS
+            // Validar formato del NSS (por ejemplo, debe ser de 11 dígitos)
+            if (!/^\d{11}$/.test(nss)) {
+                console.warn("⚠️ NSS no válido:", nss);
+                return res.status(400).json({ error: "El NSS debe tener exactamente 11 dígitos." });
+            }
+    
+            // Validar formato del token Expo (puedes ajustar la expresión según sea necesario)
+            if (!/^ExponentPushToken\[.+\]$/.test(token_expo)) {
+                console.warn("⚠️ Token Expo no válido:", token_expo);
+                return res.status(400).json({ error: "El token Expo no tiene el formato válido." });
+            }
+    
+            // Actualizar el token Expo en la base de datos
             const [result] = await db.execute(
                 "UPDATE usuarios SET token_expo = ? WHERE nss = ?",
                 [token_expo, nss]
             );
     
+            console.log("✅ Resultado de la actualización:", result);
+    
+            // Verificar si el NSS existe en la base de datos
             if (result.affectedRows === 0) {
+                console.warn("⚠️ Usuario no encontrado con NSS:", nss);
                 return res.status(404).json({ error: "Usuario no encontrado." });
             }
     
-            res.json({ message: "Token Expo registrado exitosamente." });
+            res.status(200).json({ message: "Token Expo registrado exitosamente." });
         } catch (error) {
+            // Manejo de errores en la base de datos o el servidor
             console.error("❌ Error al registrar token Expo:", error);
-            res.status(500).json({ error: "Error en el servidor." });
+            res.status(500).json({ error: "Error en el servidor al registrar el token Expo." });
         }
     });
-
+    
     
  // 📌 Cron job para verificar alarmas pendientes y generar nuevas
  cron.schedule("* * * * *", async () => {
