@@ -6,7 +6,7 @@ const multer = require("multer");
 const fs = require("fs");
 const axios = require("axios");
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
-const { enviarNotificacionExpo } = require("./expo-notifications");
+const admin = require("./firebaseAdmin");
 const cron = require("node-cron");
 
 let db;
@@ -652,8 +652,6 @@ app.get("/alarmas/:nss", async (req, res) => {
     
 // 📌 Cron job para verificar alarmas pendientes y enviar notificaciones
 cron.schedule("* * * * *", async () => {
-    console.log("⏰ Verificando alarmas pendientes...");
-
     try {
         const ahora = new Date().toISOString().slice(0, 19).replace("T", " ");
         const [alarmasPendientes] = await db.execute(
@@ -673,15 +671,15 @@ cron.schedule("* * * * *", async () => {
             if (token_expo) {
                 console.log(`📢 Enviando notificación a ${usuario_nss} para la alarma ${id}...`);
                 
-                await enviarNotificacionExpo(
+                await enviarNotificacionFCM(
                     token_expo,
                     "¡Es hora de tomar tu medicamento! 💊",
-                    `Recuerda tomar ${nombre_medicamento} ahora.`,
-                    { tipo: "alarma", id_alarma: id }
+                    `Recuerda tomar ${nombre_medicamento} ahora.`
                 );
+                
 
                 // 📌 Marcar la alarma como "Notificada"
-                await db.execute("UPDATE alarmas SET estado = 'Notificada' WHERE id = ?", [id]);
+               
             } else {
                 console.warn(`⚠ El usuario ${usuario_nss} no tiene token Expo, no se enviará notificación.`);
             }
@@ -692,7 +690,7 @@ cron.schedule("* * * * *", async () => {
                 [medicamento_id]
             );
 
-            if (alarmasRestantes[0].total === 1) {
+            if (alarmasRestantes[0].total <= 2) {
                 console.log(`⚠ Solo queda una alarma. Generando 5 nuevas...`);
 
                 const ultimaHora = new Date(hora_programada);
@@ -719,42 +717,27 @@ cron.schedule("* * * * *", async () => {
         console.error("❌ Error al verificar o enviar notificaciones:", error);
     }
 });
-async function enviarNotificacionExpo(token, title, body, data = {}) {
+const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
     const message = {
-        to: token,
-        sound: "default",
-        title,
-        body,
-        priority: "high", // 🔥 Hace que la notificación llegue incluso si el teléfono está bloqueado
-        data,
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: {
+        screen: "ActiveAlarmScreen", // Pantalla a redirigir
+        alarma_id: alarma_id,       // ID de la alarma
+      },
+      token: token, // Token del dispositivo
     };
-
-    console.log("📤 Enviando notificación push:", message);
-
+  
     try {
-        const response = await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(message),
-        });
-
-        const result = await response.json();
-        console.log("📢 Notificación enviada:", result);
-
-        // 📌 Si el dispositivo ya no está registrado, eliminamos el token
-        if (result?.data?.errors && result.data.errors[0]?.details?.error === "DeviceNotRegistered") {
-            console.log(`⚠ Eliminando token inválido: ${token}`);
-            await db.execute("UPDATE usuarios SET token_expo = NULL WHERE token_expo = ?", [token]);
-        }
-
+      const response = await admin.messaging().send(message);
+      console.log("✅ Notificación enviada con éxito a Firebase:", response);
     } catch (error) {
-        console.error("❌ Error al enviar notificación:", error);
+      console.error("❌ Error al enviar la notificación con FCM:", error);
     }
-}
-
+  };
+  
 
 // ENPOINT PARA OBTENER LOS DATOS DE TODOS LOS USUARIOS
 app.get("/administrador/usuarios", async (req, res) => {
