@@ -6,7 +6,7 @@ const path = require("path");
 const FIREBASE_JSON_URL = "https://salud-magenes.sfo2.digitaloceanspaces.com/pillpal-c96fc-firebase-adminsdk-fbsvc-0b64e4850c.json";
 const JSON_PATH = path.join(__dirname, "firebase-adminsdk.json");
 
-// 📌 Descargar el archivo JSON de Firebase si no existe
+// 📌 Descargar el archivo JSON de Firebase si 
 async function descargarFirebaseJson() {
     if (fs.existsSync(JSON_PATH)) {
         console.log("✅ Archivo de credenciales Firebase ya descargado.");

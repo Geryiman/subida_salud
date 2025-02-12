@@ -23,6 +23,7 @@ const router = express.Router();
 const certPath = "./ca-certificate.crt";
 
 // 📌 Descargar certificado SSL automáticamente
+
 async function descargarCertificado() {
     try {
         const url = "https://salud-magenes.sfo2.digitaloceanspaces.com/ca-certificate.crt";
@@ -39,6 +40,7 @@ async function iniciarServidor() {
     await descargarCertificado();
 
     // 📌 Configuración de MySQL con SSL
+
     const db = await mysql.createPool({
         host: "db-mysql-app-salud-do-user-18905968-0.j.db.ondigitalocean.com",
         user: "doadmin",
@@ -58,7 +60,7 @@ async function iniciarServidor() {
         endpoint: "https://sfo2.digitaloceanspaces.com",
         region: "sfo2",
         credentials: {
-            accessKeyId: "DO00F92NFGUU9UR29VYV", // 🔥 Credenciales visibles (NO recomendado en producción)
+            accessKeyId: "DO00F92NFGUU9UR29VYV",
             secretAccessKey: "pr0SzcMGY9zK/TaqelriS6oZJU+D/3K5CHsM7qDyYZU"
         }
     });
@@ -66,12 +68,12 @@ async function iniciarServidor() {
     app.post('/usuarios', async (req, res) => {
         const { nss, nombre, edad, sexo, contraseña } = req.body;
 
-        // Validación de campos
+
         if (!nss || !nombre || !edad || !sexo || !contraseña) {
             return res.status(400).json({ error: "Todos los campos son obligatorios." });
         }
 
-        // Validar que el NSS tenga exactamente 11 dígitos
+
         if (nss.length !== 11) {
             return res.status(400).json({ error: "El NSS debe tener exactamente 11 dígitos." });
         }
@@ -84,7 +86,7 @@ async function iniciarServidor() {
             sexoConvertido = "Femenino";
         }
 
-        // Validar que el sexo sea "Masculino", "Femenino" o "Otro"
+    
         const valoresPermitidos = ["Masculino", "Femenino", "Otro"];
         if (!valoresPermitidos.includes(sexoConvertido)) {
             return res.status(400).json({ error: "El campo 'sexo' solo puede ser 'Masculino', 'Femenino' o 'Otro'." });
@@ -103,16 +105,16 @@ async function iniciarServidor() {
         }
     });
 
+
     app.post('/login', async (req, res) => {
-        const { nss, contraseña, token_expo } = req.body; // Se agrega `token_expo` a los datos recibidos
-    
-        // Validación de campos
+        const { nss, contraseña, token_expo } = req.body;
+
         if (!nss || !contraseña) {
             return res.status(400).json({ error: "NSS y contraseña son obligatorios." });
         }
     
         try {
-            // Verificar credenciales en la base de datos
+        
             const [result] = await db.execute("SELECT * FROM usuarios WHERE nss = ? AND contraseña = ?", [nss, contraseña]);
     
             if (result.length === 0) {
@@ -121,7 +123,7 @@ async function iniciarServidor() {
     
             const usuario = result[0];
     
-            // Si se recibe un token Expo, actualizarlo en la base de datos
+        
             if (token_expo) {
                 console.log("ℹ️ Actualizando token Expo...");
                 const [updateResult] = await db.execute(
@@ -152,7 +154,7 @@ async function iniciarServidor() {
     });
     
 
-    // 📌 Configuración de Multer para manejar archivos en memoria
+    // �� Endpoint para verificar si un NSS ya está registrado
     const storage = multer.memoryStorage();
     const upload = multer({ storage: storage });
 
@@ -238,7 +240,7 @@ async function iniciarServidor() {
                 return res.status(400).json({ error: "Todos los campos son obligatorios." });
             }
 
-            // 🔹 Generar un nombre único para la imagen
+            //  Generar un nombre único para la imagen
             const key = `imagenes/${Date.now()}-${req.file.originalname}`;
 
             const uploadParams = {
@@ -254,7 +256,7 @@ async function iniciarServidor() {
 
             const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
-            // 🔹 Guardar en MySQL
+
             const query = "INSERT INTO imagenes (usuario_nss, tipo, url, descripcion) VALUES (?, 'medicamento', ?, ?)";
             await db.execute(query, [usuario_nss, imageUrl, descripcion]);
 
@@ -310,7 +312,7 @@ async function iniciarServidor() {
                 [nss]
             );
 
-            // 🔹 Definir la URL de la imagen
+            // Definir la URL de la imagen
             const userImage = imageResult.length > 0
                 ? imageResult[0].url
                 : `https://salud-magenes.sfo2.digitaloceanspaces.com/usuario/${nss}/perfil.jpg`;
@@ -522,12 +524,12 @@ app.get("/alarmas/:nss", async (req, res) => {
         }
 
         try {
-            // 🔹 Generar carpeta y nombre del archivo
+            // Generar carpeta y nombre del archivo
             const folder = `photos/${usuario_nss}`;
             const fileName = `alarma_${id}_${Date.now()}.jpg`;
             const key = `${folder}/${fileName}`;
 
-            // 🔹 Subir imagen a DigitalOcean Spaces
+            // Subir imagen a DigitalOcean Spaces
             const uploadParams = {
                 Bucket: "salud-magenes",
                 Key: key,
@@ -539,7 +541,7 @@ app.get("/alarmas/:nss", async (req, res) => {
             await s3Client.send(new PutObjectCommand(uploadParams));
             const imageUrl = `https://salud-magenes.sfo2.digitaloceanspaces.com/${key}`;
 
-            // 🔹 Actualizar la alarma en la base de datos
+            // Actualizar la alarma en la base de datos
             const [result] = await db.execute(
                 `UPDATE alarmas 
              SET estado = 'Tomada', imagen_prueba = ? 
@@ -561,11 +563,11 @@ app.get("/alarmas/:nss", async (req, res) => {
         }
     });
 
-
+    // 📌 Endpoint para obtener alarmas por usuario
     app.post("/alarmas", async (req, res) => {
         const { medicamento_id, usuario_nss, hora_programada } = req.body;
     
-        // Validar que todos los campos obligatorios estén presentes
+
         if (!medicamento_id || !usuario_nss || !hora_programada) {
             return res.status(400).json({ 
                 error: "Faltan campos obligatorios: 'medicamento_id', 'usuario_nss', y 'hora_programada' son necesarios." 
@@ -579,9 +581,9 @@ app.get("/alarmas/:nss", async (req, res) => {
                 return res.status(400).json({ error: "El campo 'hora_programada' no tiene un formato válido." });
             }
     
-            const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); // Formato `YYYY-MM-DD HH:mm:ss`
+            const horaFormateada = horaValida.toISOString().slice(0, 19).replace("T", " "); 
+            // Formato `YYYY-MM-DD HH:mm:ss`
     
-            // Insertar la alarma en la base de datos
             const [result] = await db.execute(
                 "INSERT INTO alarmas (medicamento_id, usuario_nss, hora_programada, estado) VALUES (?, ?, ?, 'Pendiente')",
                 [medicamento_id, usuario_nss, horaFormateada]
@@ -606,24 +608,24 @@ app.get("/alarmas/:nss", async (req, res) => {
     app.post("/registrar-token", async (req, res) => {
         const { nss, token_expo } = req.body;
     
-        // Validar que los datos requeridos están presentes
-        console.log("📩 Datos recibidos en /registrar-token:", { nss, token_expo });
+       
+        console.log(" Datos recibidos en /registrar-token:", { nss, token_expo });
     
         if (!nss || !token_expo) {
-            console.warn("⚠️ Faltan datos: NSS y token_expo son obligatorios.");
+            console.warn(" Faltan datos: NSS y token_expo son obligatorios.");
             return res.status(400).json({ error: "Faltan datos: NSS y token_expo son obligatorios." });
         }
     
         try {
-            // Validar formato del NSS (por ejemplo, debe ser de 11 dígitos)
+          
             if (!/^\d{11}$/.test(nss)) {
-                console.warn("⚠️ NSS no válido:", nss);
+                console.warn(" NSS no válido:", nss);
                 return res.status(400).json({ error: "El NSS debe tener exactamente 11 dígitos." });
             }
     
-            // Validar formato del token Expo (puedes ajustar la expresión según sea necesario)
+  
             if (!/^ExponentPushToken\[.+\]$/.test(token_expo)) {
-                console.warn("⚠️ Token Expo no válido:", token_expo);
+                console.warn(" Token Expo no válido:", token_expo);
                 return res.status(400).json({ error: "El token Expo no tiene el formato válido." });
             }
     
@@ -633,9 +635,9 @@ app.get("/alarmas/:nss", async (req, res) => {
                 [token_expo, nss]
             );
     
-            console.log("✅ Resultado de la actualización:", result);
+            console.log(" Resultado de la actualización:", result);
     
-            // Verificar si el NSS existe en la base de datos
+
             if (result.affectedRows === 0) {
                 console.warn("⚠️ Usuario no encontrado con NSS:", nss);
                 return res.status(404).json({ error: "Usuario no encontrado." });
@@ -678,7 +680,6 @@ cron.schedule("* * * * *", async () => {
                 );
                 
 
-                // 📌 Marcar la alarma como "Notificada"
                
             } else {
                 console.warn(`⚠ El usuario ${usuario_nss} no tiene token Expo, no se enviará notificación.`);
@@ -725,7 +726,7 @@ const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
       },
       data: {
         screen: "ActiveAlarmScreen", // Pantalla a redirigir
-        alarma_id: alarma_id,       // ID de la alarma
+        alarma_id: alarma_id,       
       },
       token: token, // Token del dispositivo
     };
