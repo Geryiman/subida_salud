@@ -719,16 +719,17 @@ cron.schedule("* * * * *", async () => {
 });
 const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
     const message = {
-      notification: {
-        title: title,
-        body: body,
-      },
-      data: {
-        screen: "ActiveAlarmScreen",
-        alarma_id: String(alarma_id), // ✅ Convertido a string
-      },
-      token: token,
-    };
+        notification: {
+          title: title,
+          body: body,
+        },
+        data: {
+          screen: "ActiveAlarmScreen",
+          alarma_id: alarma_id.toString(), // 🔒 Siempre string
+        },
+        token: token,
+      };
+      
   
     try {
       const response = await admin.messaging().send(message);
