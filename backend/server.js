@@ -724,10 +724,10 @@ const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
         body: body,
       },
       data: {
-        screen: "ActiveAlarmScreen", // Pantalla a redirigir
-        alarma_id: alarma_id,       
+        screen: "ActiveAlarmScreen",
+        alarma_id: String(alarma_id), // ✅ Convertido a string
       },
-      token: token, // Token del dispositivo
+      token: token,
     };
   
     try {
@@ -737,6 +737,7 @@ const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
       console.error("❌ Error al enviar la notificación con FCM:", error);
     }
   };
+  
   
 
 // ENPOINT PARA OBTENER LOS DATOS DE TODOS LOS USUARIOS
