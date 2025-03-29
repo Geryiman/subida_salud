@@ -675,7 +675,9 @@ cron.schedule("* * * * *", async () => {
                 await enviarNotificacionFCM(
                     token_expo,
                     "¡Es hora de tomar tu medicamento! 💊",
-                    `Recuerda tomar ${nombre_medicamento} ahora.`
+                    `Recuerda tomar ${nombre_medicamento} ahora.`,
+                    id
+
                 );
                 
 
@@ -718,20 +720,19 @@ cron.schedule("* * * * *", async () => {
     }
 });
 const enviarNotificacionFCM = async (token, title, body, alarma_id) => {
-    const message = {
+    try {
+      const message = {
         notification: {
           title: title,
           body: body,
         },
         data: {
           screen: "ActiveAlarmScreen",
-          alarma_id: alarma_id.toString(), // 🔒 Siempre string
+          alarma_id: alarma_id ? alarma_id.toString() : "", // Evita error si es undefined
         },
         token: token,
       };
-      
   
-    try {
       const response = await admin.messaging().send(message);
       console.log("✅ Notificación enviada con éxito a Firebase:", response);
     } catch (error) {
